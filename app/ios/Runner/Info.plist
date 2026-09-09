@@ -4,6 +4,10 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ContextDrive requires camera access to detect road hazards.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ContextDrive requires location access to determine vehicle speed.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

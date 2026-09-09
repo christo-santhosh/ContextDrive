@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.contextdrive.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
