@@ -5,6 +5,8 @@ import '../services/tflite_service.dart';
 import '../models/detected_object.dart';
 import '../models/context_vector.dart';
 import '../managers/risk_manager.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   CameraController? _cameraController;
   bool _isProcessing = false;
+  File? _staticImage;
   
   // Use a ValueNotifier to only rebuild the bounding boxes, not the whole camera preview
   final ValueNotifier<List<DetectedObject>> _detectionsNotifier = ValueNotifier([]);
@@ -28,8 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeML() async {
-    final tflite = context.read<TFLiteService>();
-    await tflite.initialize();
+    final tflite = context.read<TfliteService>();
+    await tflite.init();
   }
 
   Future<void> _initializeCamera() async {
@@ -59,13 +62,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {});
     } catch (e) {
-      debugPrint("Camera Error: \$e");
+      debugPrint("Camera Error: $e");
     }
   }
 
   Future<void> _processFrame(CameraImage image) async {
     try {
-      final tflite = context.read<TFLiteService>();
+      final tflite = context.read<TfliteService>();
       final results = await tflite.processFrame(image);
       
       if (mounted) {
@@ -84,6 +87,31 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Future<void> _pickStaticImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (pickedFile != null) {
+      if (_cameraController != null && _cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+      
+      setState(() {
+        _staticImage = File(pickedFile.path);
+        _detectionsNotifier.value = []; // Clear old detections
+      });
+
+      // Run inference on the static image
+      final tflite = context.read<TfliteService>();
+      final results = await tflite.processStaticImage(pickedFile.path);
+      
+      if (mounted) {
+        _detectionsNotifier.value = results;
+        context.read<RiskManager>().updateDetections(results);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
@@ -91,14 +119,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('ContextDrive')),
+      appBar: AppBar(
+        title: const Text('ContextDrive'),
+        actions: [
+          if (_staticImage != null)
+            IconButton(
+              icon: const Icon(Icons.camera_alt),
+              onPressed: () {
+                setState(() {
+                  _staticImage = null;
+                  _detectionsNotifier.value = [];
+                });
+                _initializeCamera();
+              },
+            )
+        ],
+      ),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          CameraPreview(_cameraController!),
+          _staticImage != null 
+              ? Image.file(_staticImage!, fit: BoxFit.cover)
+              : CameraPreview(_cameraController!),
           _buildBoundingBoxes(),
           _buildRiskOverlay(),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _pickStaticImage,
+        child: const Icon(Icons.image),
       ),
     );
   }
@@ -148,15 +197,15 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'RISK: \${assessment.level.name.toUpperCase()}', 
+                  'RISK: ${assessment.level.name.toUpperCase()}', 
                   style: TextStyle(color: riskColor, fontSize: 24, fontWeight: FontWeight.bold)
                 ),
                 const SizedBox(height: 8),
-                Text('⚠ \${assessment.recommendation}', style: const TextStyle(color: Colors.white, fontSize: 18)),
+                Text('⚠ ${assessment.recommendation}', style: const TextStyle(color: Colors.white, fontSize: 18)),
                 const SizedBox(height: 8),
-                Text('How: \${assessment.howExplanation}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                Text('How: ${assessment.howExplanation}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 4),
-                Text('Why: \${assessment.whyExplanation}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                Text('Why: ${assessment.whyExplanation}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
               ],
             ),
           );
@@ -189,7 +238,7 @@ class BoundingBoxPainter extends CustomPainter {
       
       final textPainter = TextPainter(
         text: TextSpan(
-          text: '\${det.label} (\${(det.confidence * 100).toStringAsFixed(0)}%)',
+          text: '${det.label} (${(det.confidence * 100).toStringAsFixed(0)}%)',
           style: const TextStyle(color: Colors.white, backgroundColor: Colors.redAccent, fontSize: 14),
         ),
         textDirection: TextDirection.ltr,

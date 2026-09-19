@@ -1,39 +1,310 @@
-import 'package:camera/camera.dart';
+import 'dart:io';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter/services.dart';
+import 'package:camera/camera.dart';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart'; // for compute
+
 import '../models/detected_object.dart';
 
-class TFLiteService {
+class TfliteService {
   Interpreter? _interpreter;
+  List<String>? _labels;
+  bool _isProcessing = false;
 
-  Future<void> initialize() async {
+  final int _inputSize = 320;
+  final double _confidenceThreshold = 0.55;
+
+  Future<void> init() async {
     try {
-      // Load the model and labels (Make sure these exist in assets/)
-      _interpreter = await Interpreter.fromAsset('assets/ssd_mobilenet_v2.tflite');
-      // Load labels from a text file, assuming each line is a label
-      // _labels = await FileUtil.loadLabels('assets/labels.txt');
+      final options = InterpreterOptions()..threads = 4;
       
-      print('Model loaded successfully');
+      _interpreter = await Interpreter.fromAsset('assets/detect.tflite', options: options);
+      
+      // Explicitly resize the input tensor to 320x320 and allocate
+      _interpreter!.resizeInputTensor(0, [1, _inputSize, _inputSize, 3]);
+      _interpreter!.allocateTensors();
+      
+      final labelData = await rootBundle.loadString('assets/labelmap.txt');
+      _labels = labelData.split('\n');
+      print('TFLite Initialized successfully.');
+      
+      // Print IO info for debugging
+      print('Input Tensors: ${_interpreter?.getInputTensors()}');
+      print('Output Tensors: ${_interpreter?.getOutputTensors()}');
+      
     } catch (e) {
-      print('Error loading model: \$e');
+      print('Error initializing TFLite: $e');
     }
   }
 
   Future<List<DetectedObject>> processFrame(CameraImage image) async {
-    if (_interpreter == null) return [];
+    if (_interpreter == null || _isProcessing) return [];
+    _isProcessing = true;
 
-    // NOTE: In a real implementation, you must convert the YUV420 CameraImage
-    // into a 300x300x3 RGB tensor to match SSD MobileNetV2 input shape.
-    // This requires image processing using `image` package or native code.
-    
-    // For this boilerplate, we'll return an empty list or mock detections
-    // until the actual image conversion is implemented and tested.
-    
-    await Future.delayed(const Duration(milliseconds: 50)); // simulate inference delay
+    try {
+      // Move image conversion and tensor creation to background isolate
+      final isolateData = _IsolateData(
+        image.width,
+        image.height,
+        _inputSize,
+        image.format.group == ImageFormatGroup.yuv420,
+        image.planes.map((p) => p.bytes).toList(),
+        image.planes.map((p) => p.bytesPerRow).toList(),
+        image.planes.map((p) => p.bytesPerPixel ?? 1).toList(),
+        false,
+      );
 
-    return [];
+      print('DEBUG: Starting isolate...');
+      var inputBuffer = await compute(_processImageInIsolate, isolateData) as Uint8List;
+      print('DEBUG: Isolate finished!');
+
+      return _runInferenceAndParse(inputBuffer);
+    } catch (e) {
+      if (!_hasPrintedTypeError) {
+        print('Error during processing: $e');
+        _hasPrintedTypeError = true;
+      }
+      _isProcessing = false;
+      return [];
+    }
   }
 
-  void dispose() {
-    _interpreter?.close();
+  Future<List<DetectedObject>> processStaticImage(String imagePath) async {
+    if (_interpreter == null || _isProcessing) return [];
+    _isProcessing = true;
+
+    try {
+      final imgBytes = await File(imagePath).readAsBytes();
+      final decodedImage = img.decodeImage(imgBytes);
+      if (decodedImage == null) {
+        _isProcessing = false;
+        return [];
+      }
+
+      final resizedImage = img.copyResize(decodedImage, width: _inputSize, height: _inputSize);
+
+      var inputBuffer = Uint8List(1 * _inputSize * _inputSize * 3);
+      int p = 0;
+      for (int y = 0; y < _inputSize; y++) {
+        for (int x = 0; x < _inputSize; x++) {
+          var pixel = resizedImage.getPixel(x, y);
+          inputBuffer[p++] = pixel.r.toInt();
+          inputBuffer[p++] = pixel.g.toInt();
+          inputBuffer[p++] = pixel.b.toInt();
+        }
+      }
+
+      return _runInferenceAndParse(inputBuffer);
+    } catch (e) {
+      print('Error processing static image: $e');
+      _isProcessing = false;
+      return [];
+    }
   }
+
+  List<DetectedObject> _runInferenceAndParse(Uint8List inputBuffer) {
+    var inputTensor = _interpreter!.getInputTensor(0);
+    inputTensor.setTo(inputBuffer);
+    
+    _interpreter!.invoke();
+
+    var tensors = _interpreter!.getOutputTensors();
+
+    int boxesIdx = 4;
+    int scoresIdx = 6;
+    int classesIdx = 5;
+    int numDetectionsIdx = 2;
+
+    for (int i = 0; i < tensors.length; i++) {
+      var t = tensors[i];
+      if (t.name == 'detection_boxes') boxesIdx = i;
+      if (t.name == 'detection_scores') scoresIdx = i;
+      if (t.name == 'detection_classes') classesIdx = i;
+      if (t.name == 'num_detections') numDetectionsIdx = i;
+    }
+
+    var boxesTensor = _interpreter!.getOutputTensor(boxesIdx);
+    var scoresTensor = _interpreter!.getOutputTensor(scoresIdx);
+    var classesTensor = _interpreter!.getOutputTensor(classesIdx);
+    var numDetectionsTensor = _interpreter!.getOutputTensor(numDetectionsIdx);
+
+    // Read flat Float32 data
+    var boxesData = Float32List(1 * 100 * 4);
+    var scoresData = Float32List(1 * 100);
+    var classesData = Float32List(1 * 100);
+    var numDetectionsData = Float32List(1);
+    
+    // We cannot use outputTensor.copyTo() easily if shapes mismatch, but we can access data directly?
+    // tflite_flutter's Tensor class provides a data buffer!
+    // But tflite_flutter 0.12.1 requires outputs to be objects or pre-allocated shapes.
+    // Wait, let's use the standard `outputs` map for `invoke()`, which handles memory mapping perfectly.
+    
+    Map<int, List<int>> knownShapes = {
+      0: [1, 12804, 4],
+      1: [1, 100],
+      2: [1],
+      3: [1, 12804, 91],
+      4: [1, 100, 4],
+      5: [1, 100],
+      6: [1, 100],
+      7: [1, 100, 91],
+    };
+    
+    Map<int, Object> outputs = {};
+    for (int i = 0; i < tensors.length; i++) {
+      var t = tensors[i];
+      List<int> shape = knownShapes.containsKey(i) ? knownShapes[i]! : t.shape;
+      outputs[i] = _createNestedList(shape, 0);
+    }
+
+    _interpreter!.runForMultipleInputs([inputBuffer], outputs);
+
+    List<DetectedObject> results = [];
+    
+    var parsedScores = outputs[scoresIdx] as List<dynamic>;
+    var parsedBoxes = outputs[boxesIdx] as List<dynamic>;
+    var parsedClasses = outputs[classesIdx] as List<dynamic>;
+    
+    int detectionCount = parsedScores[0].length;
+
+    if (!_hasPrintedShapes) {
+      print("====== DEBUG TENSORS ======");
+      for (int i = 0; i < tensors.length; i++) {
+        print("Tensor $i: name=${tensors[i].name}, shape=${tensors[i].shape}");
+      }
+      print("boxesIdx=$boxesIdx, scoresIdx=$scoresIdx, classesIdx=$classesIdx, numDetectionsIdx=$numDetectionsIdx");
+      
+      var t1 = (outputs[1] as List<dynamic>)[0] as List<double>;
+      var t5 = (outputs[5] as List<dynamic>)[0] as List<double>;
+      var t6 = (outputs[6] as List<dynamic>)[0] as List<double>;
+      print("Tensor 1 (Call:0) head: ${t1.sublist(0, 5)}");
+      print("Tensor 5 (Call:2) head: ${t5.sublist(0, 5)}");
+      print("Tensor 6 (Call:4) head: ${t6.sublist(0, 5)}");
+      _hasPrintedShapes = true;
+    }
+
+    for (int i = 0; i < detectionCount; i++) {
+      if (parsedScores[0][i] is! double || parsedClasses[0][i] is! double) {
+        if (!_hasPrintedTypeError) {
+          print("TYPE ERROR! Score is ${parsedScores[0][i].runtimeType}, Class is ${parsedClasses[0][i].runtimeType}");
+          _hasPrintedTypeError = true;
+        }
+        break;
+      }
+
+      double score = parsedScores[0][i];
+      if (score >= _confidenceThreshold) {
+        int classId = (parsedClasses[0][i] as double).toInt();
+        
+        // Temporarily map everything to 'Vehicle' or 'person' for debugging, 
+        // or just pass through the raw class ID as a string if we don't have the label.
+        String className = "Object $classId";
+        if (_labels != null && classId < _labels!.length) {
+          className = _labels![classId];
+        }
+
+        var box = parsedBoxes[0][i];
+        if (box is! List || box.length < 4) continue;
+        
+        double ymin = box[0];
+        double xmin = box[1];
+        double ymax = box[2];
+        double xmax = box[3];
+        
+        results.add(DetectedObject(
+          label: className,
+          confidence: score,
+          boundingBox: Rect.fromLTRB(xmin, ymin, xmax, ymax),
+          trackingId: i,
+        ));
+      }
+    }
+
+    _isProcessing = false;
+    return results;
+  }
+
+  bool _hasPrintedShapes = false;
+  bool _hasPrintedTypeError = false;
+
+  Object _createNestedList(List<int> shape, int depth) {
+    if (shape.isEmpty) return [0.0];
+    if (depth == shape.length - 1) {
+      return List<double>.filled(shape[depth], 0.0);
+    }
+    return List<dynamic>.generate(shape[depth], (i) => _createNestedList(shape, depth + 1));
+  }
+
+}
+
+class _IsolateData {
+  final int width;
+  final int height;
+  final int inputSize;
+  final bool isYuv;
+  final List<Uint8List> planeBytes;
+  final List<int> bytesPerRow;
+  final List<int> bytesPerPixel;
+  final bool isFloat;
+
+  _IsolateData(this.width, this.height, this.inputSize, this.isYuv, this.planeBytes, this.bytesPerRow, this.bytesPerPixel, this.isFloat);
+}
+
+Object _processImageInIsolate(_IsolateData data) {
+  img.Image imgImage = img.Image(width: data.width, height: data.height);
+
+  if (data.isYuv) {
+    final int uvRowStride = data.bytesPerRow[1];
+    final int uvPixelStride = data.bytesPerPixel[1];
+    final int yRowStride = data.bytesPerRow[0];
+
+    for (int y = 0; y < data.height; y++) {
+      for (int x = 0; x < data.width; x++) {
+        final int uvIndex = uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+        final int index = y * yRowStride + x;
+
+        final yp = data.planeBytes[0][index];
+        final up = data.planeBytes[1][uvIndex];
+        final vp = data.planeBytes[2][uvIndex];
+
+        int r = (yp + vp * 1436 / 1024 - 179).round();
+        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round();
+        int b = (yp + up * 1814 / 1024 - 227).round();
+
+        r = r.clamp(0, 255);
+        g = g.clamp(0, 255);
+        b = b.clamp(0, 255);
+
+        imgImage.setPixelRgb(x, y, r, g, b);
+      }
+    }
+  } else {
+    imgImage = img.Image.fromBytes(
+      width: data.width,
+      height: data.height,
+      bytes: data.planeBytes[0].buffer,
+      rowStride: data.bytesPerRow[0],
+      order: img.ChannelOrder.bgra,
+    );
+  }
+  // Create a flat Uint8List buffer directly to avoid nested list parsing bugs
+  img.Image resizedImage = img.copyResize(imgImage, width: data.inputSize, height: data.inputSize);
+  
+  var inputBuffer = Uint8List(1 * data.inputSize * data.inputSize * 3);
+  int p = 0;
+  for (int y = 0; y < data.inputSize; y++) {
+    for (int x = 0; x < data.inputSize; x++) {
+      int srcX = y;
+      int srcY = (data.inputSize - 1) - x;
+      var pixel = resizedImage.getPixel(srcX, srcY);
+      
+      inputBuffer[p++] = pixel.r.toInt();
+      inputBuffer[p++] = pixel.g.toInt();
+      inputBuffer[p++] = pixel.b.toInt();
+    }
+  }
+
+  return inputBuffer;
 }

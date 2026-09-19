@@ -22,7 +22,7 @@ class ContextDriveApp extends StatelessWidget {
         Provider<GpsService>(create: (_) => GpsService()),
         Provider<WeatherService>(create: (_) => WeatherService()),
         Provider<TimeContextService>(create: (_) => TimeContextService()),
-        Provider<TFLiteService>(create: (_) => TFLiteService()),
+        Provider<TfliteService>(create: (_) => TfliteService()),
         ChangeNotifierProxyProvider3<GpsService, WeatherService, TimeContextService, RiskManager>(
           create: (ctx) => RiskManager(
             ctx.read<GpsService>(),
