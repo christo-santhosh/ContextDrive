@@ -195,30 +195,34 @@ class TfliteService {
       }
 
       double score = parsedScores[0][i];
-      if (score >= _confidenceThreshold) {
+      if (score >= 0.40) { // Lowered to 40% to help detect cars inside laptop screens
         int classId = (parsedClasses[0][i] as double).toInt();
         
-        // Temporarily map everything to 'Vehicle' or 'person' for debugging, 
-        // or just pass through the raw class ID as a string if we don't have the label.
-        String className = "Object $classId";
-        if (_labels != null && classId < _labels!.length) {
+        String className = "Vehicle";
+        if (classId == 0) {
+          className = "Person";
+        } else if (_labels != null && classId < _labels!.length) {
           className = _labels![classId];
         }
 
-        var box = parsedBoxes[0][i];
-        if (box is! List || box.length < 4) continue;
-        
-        double ymin = box[0];
-        double xmin = box[1];
-        double ymax = box[2];
-        double xmax = box[3];
-        
-        results.add(DetectedObject(
-          label: className,
-          confidence: score,
-          boundingBox: Rect.fromLTRB(xmin, ymin, xmax, ymax),
-          trackingId: i,
-        ));
+        // Only detect Vehicles (2=Car, 3=Motorcycle, 5=Bus, 7=Truck) and optionally Person (0)
+        // Since user wants to 'detect vehicles', we will allow 2,3,5,7.
+        if ([2, 3, 5, 7].contains(classId)) {
+          var box = parsedBoxes[0][i];
+          if (box is! List || box.length < 4) continue;
+          
+          double ymin = box[0];
+          double xmin = box[1];
+          double ymax = box[2];
+          double xmax = box[3];
+          
+          results.add(DetectedObject(
+            label: "Vehicle", // Enforce label
+            confidence: score,
+            boundingBox: Rect.fromLTRB(xmin, ymin, xmax, ymax),
+            trackingId: i,
+          ));
+        }
       }
     }
 
@@ -253,56 +257,61 @@ class _IsolateData {
 }
 
 Object _processImageInIsolate(_IsolateData data) {
-  img.Image imgImage = img.Image(width: data.width, height: data.height);
+  var inputBuffer = Uint8List(1 * data.inputSize * data.inputSize * 3);
+  int p = 0;
 
   if (data.isYuv) {
     final int uvRowStride = data.bytesPerRow[1];
     final int uvPixelStride = data.bytesPerPixel[1];
     final int yRowStride = data.bytesPerRow[0];
 
-    for (int y = 0; y < data.height; y++) {
-      for (int x = 0; x < data.width; x++) {
-        final int uvIndex = uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
-        final int index = y * yRowStride + x;
+    // Subsample directly during YUV extraction to save 90% CPU
+    for (int dstY = 0; dstY < data.inputSize; dstY++) {
+      for (int dstX = 0; dstX < data.inputSize; dstX++) {
+        // Rotate 90 degrees clockwise while sampling
+        int srcX = (dstY * data.width / data.inputSize).floor();
+        int srcY = data.height - 1 - (dstX * data.height / data.inputSize).floor();
+
+        srcX = srcX.clamp(0, data.width - 1);
+        srcY = srcY.clamp(0, data.height - 1);
+
+        final int uvIndex = uvPixelStride * (srcX >> 1) + uvRowStride * (srcY >> 1);
+        final int index = srcY * yRowStride + srcX;
 
         final yp = data.planeBytes[0][index];
         final up = data.planeBytes[1][uvIndex];
         final vp = data.planeBytes[2][uvIndex];
 
-        int r = (yp + vp * 1436 / 1024 - 179).round();
-        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round();
-        int b = (yp + up * 1814 / 1024 - 227).round();
+        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round().clamp(0, 255);
+        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
 
-        r = r.clamp(0, 255);
-        g = g.clamp(0, 255);
-        b = b.clamp(0, 255);
-
-        imgImage.setPixelRgb(x, y, r, g, b);
+        inputBuffer[p++] = r;
+        inputBuffer[p++] = g;
+        inputBuffer[p++] = b;
       }
     }
   } else {
-    imgImage = img.Image.fromBytes(
+    // Fallback for non-YUV (unlikely on Android, but safe)
+    img.Image imgImage = img.Image.fromBytes(
       width: data.width,
       height: data.height,
       bytes: data.planeBytes[0].buffer,
       rowStride: data.bytesPerRow[0],
       order: img.ChannelOrder.bgra,
     );
-  }
-  // Create a flat Uint8List buffer directly to avoid nested list parsing bugs
-  img.Image resizedImage = img.copyResize(imgImage, width: data.inputSize, height: data.inputSize);
-  
-  var inputBuffer = Uint8List(1 * data.inputSize * data.inputSize * 3);
-  int p = 0;
-  for (int y = 0; y < data.inputSize; y++) {
-    for (int x = 0; x < data.inputSize; x++) {
-      int srcX = y;
-      int srcY = (data.inputSize - 1) - x;
-      var pixel = resizedImage.getPixel(srcX, srcY);
-      
-      inputBuffer[p++] = pixel.r.toInt();
-      inputBuffer[p++] = pixel.g.toInt();
-      inputBuffer[p++] = pixel.b.toInt();
+    
+    img.Image resizedImage = img.copyResize(imgImage, width: data.inputSize, height: data.inputSize);
+    for (int y = 0; y < data.inputSize; y++) {
+      for (int x = 0; x < data.inputSize; x++) {
+        int srcX = y;
+        int srcY = (data.inputSize - 1) - x;
+        var pixel = resizedImage.getPixel(srcX, srcY);
+        
+        inputBuffer[p++] = pixel.r.toInt();
+        inputBuffer[p++] = pixel.g.toInt();
+        inputBuffer[p++] = pixel.b.toInt();
+      }
     }
   }
 
