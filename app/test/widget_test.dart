@@ -5,26 +5,42 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:app/main.dart';
+import 'package:app/models/context_vector.dart';
+import 'package:app/engine/risk_engine.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('Risk engine deterministic test', () {
+    final engine = RiskEngine();
+    
+    // High risk test
+    final highRiskContext = ContextVector(
+      currentSpeed: 90.0,
+      isRaining: true,
+      isNight: true,
+      visibility: 500,
+      isWeatherAvailable: true,
+      nearbyVehicles: 2,
+      closestVehicleDistance: 0.1,
+      isClosingIn: true,
+    );
+    
+    final highAssessment = engine.assessRisk(highRiskContext);
+    expect(highAssessment.level, RiskLevel.high);
+    
+    // Low risk test
+    final lowRiskContext = ContextVector(
+      currentSpeed: 40.0,
+      isRaining: false,
+      isNight: false,
+      visibility: 10000,
+      isWeatherAvailable: true,
+      nearbyVehicles: 0,
+      closestVehicleDistance: 1.0,
+      isClosingIn: false,
+    );
+    
+    final lowAssessment = engine.assessRisk(lowRiskContext);
+    expect(lowAssessment.level, RiskLevel.low);
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
@@ -15,6 +16,12 @@ class _IsolateInitData {
   _IsolateInitData(this.sendPort, this.token);
 }
 
+class _IsolateInitResponse {
+  final SendPort? sendPort;
+  final String? error;
+  _IsolateInitResponse({this.sendPort, this.error});
+}
+
 class _IsolateRequest {
   final SendPort replyPort;
   final int width;
@@ -24,6 +31,8 @@ class _IsolateRequest {
   final List<Uint8List> planeBytes;
   final List<int> bytesPerRow;
   final List<int> bytesPerPixel;
+  final int sensorOrientation;
+  final int deviceOrientation; // 0 = portrait, 1 = landscapeLeft, 2 = landscapeRight, 3 = portraitDown
   final String? imagePath;
 
   _IsolateRequest({
@@ -35,6 +44,8 @@ class _IsolateRequest {
     required this.planeBytes,
     required this.bytesPerRow,
     required this.bytesPerPixel,
+    required this.sensorOrientation,
+    required this.deviceOrientation,
     this.imagePath,
   });
 }
@@ -54,16 +65,30 @@ class TfliteService {
     
     await Isolate.spawn(_isolateEntryPoint, _IsolateInitData(receivePort.sendPort, token));
     
-    _isolateSendPort = await receivePort.first as SendPort;
-    print('TFLite Isolate spawned and ready.');
+    try {
+      final response = await receivePort.first.timeout(const Duration(seconds: 10)) as _IsolateInitResponse;
+      if (response.error != null) {
+        throw Exception(response.error);
+      }
+      _isolateSendPort = response.sendPort;
+      debugPrint('TFLite Isolate spawned and ready.');
+    } catch (e) {
+      throw Exception('TFLite initialization failed or timed out: $e');
+    } finally {
+      receivePort.close();
+    }
   }
 
-  Future<List<DetectedObject>> processFrame(CameraImage image) async {
+  void dispose() {
+    _isolateSendPort?.send('terminate'); // Signal isolate to terminate
+  }
+
+  Future<List<DetectedObject>> processFrame(CameraImage image, int sensorOrientation, DeviceOrientation deviceOrientation) async {
     if (_isolateSendPort == null || _isProcessing) return [];
     _isProcessing = true;
 
+    final responsePort = ReceivePort();
     try {
-      final responsePort = ReceivePort();
       final request = _IsolateRequest(
         replyPort: responsePort.sendPort,
         width: image.width,
@@ -73,17 +98,20 @@ class TfliteService {
         planeBytes: image.planes.map((p) => p.bytes).toList(),
         bytesPerRow: image.planes.map((p) => p.bytesPerRow).toList(),
         bytesPerPixel: image.planes.map((p) => p.bytesPerPixel ?? 1).toList(),
+        sensorOrientation: sensorOrientation,
+        deviceOrientation: deviceOrientation.index,
       );
 
       _isolateSendPort!.send(request);
       final results = await responsePort.first as List<DetectedObject>;
       
-      _isProcessing = false;
       return results;
     } catch (e) {
-      print('Error in processFrame: $e');
-      _isProcessing = false;
+      debugPrint('Error in processFrame: $e');
       return [];
+    } finally {
+      responsePort.close();
+      _isProcessing = false;
     }
   }
 
@@ -91,24 +119,26 @@ class TfliteService {
     if (_isolateSendPort == null || _isProcessing) return [];
     _isProcessing = true;
 
+    final responsePort = ReceivePort();
     try {
-      final responsePort = ReceivePort();
       final request = _IsolateRequest(
         replyPort: responsePort.sendPort,
         width: 0, height: 0, inputSize: _inputSize, isYuv: false,
         planeBytes: [], bytesPerRow: [], bytesPerPixel: [],
+        sensorOrientation: 0, deviceOrientation: 0,
         imagePath: imagePath,
       );
 
       _isolateSendPort!.send(request);
       final results = await responsePort.first as List<DetectedObject>;
       
-      _isProcessing = false;
       return results;
     } catch (e) {
-      print('Error processing static image: $e');
-      _isProcessing = false;
+      debugPrint('Error processing static image: $e');
       return [];
+    } finally {
+      responsePort.close();
+      _isProcessing = false;
     }
   }
 }
@@ -120,6 +150,12 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
   
   Interpreter? interpreter;
   List<String>? labels;
+  
+  int boxesIdx = -1;
+  int classesIdx = -1;
+  int scoresIdx = -1;
+
+  final port = ReceivePort();
 
   try {
     final options = InterpreterOptions()..threads = 4;
@@ -128,21 +164,27 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
     
     final labelData = await rootBundle.loadString('assets/labelmap.txt');
     labels = labelData.split('\n');
-    print('TFLite initialized inside isolate.');
+    
+    // Explicitly verified indices for this specific SSD model
+    boxesIdx = 4;
+    classesIdx = 5;
+    scoresIdx = 6;
+
+    initData.sendPort.send(_IsolateInitResponse(sendPort: port.sendPort));
   } catch (e) {
-    print('Failed to initialize TFLite in isolate: $e');
+    initData.sendPort.send(_IsolateInitResponse(error: e.toString()));
+    return;
   }
 
-  final port = ReceivePort();
-  initData.sendPort.send(port.sendPort);
-
   await for (final msg in port) {
+    if (msg == 'terminate') {
+      // Termination signal
+      interpreter.close();
+      port.close();
+      break;
+    }
+    
     if (msg is _IsolateRequest) {
-      if (interpreter == null) {
-        msg.replyPort.send(<DetectedObject>[]);
-        continue;
-      }
-
       try {
         Uint8List inputBuffer;
         
@@ -175,18 +217,20 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
             final int uvPixelStride = msg.bytesPerPixel[1];
             final int yRowStride = msg.bytesPerRow[0];
 
-            bool isLandscape = msg.width > msg.height;
+            bool rotate90 = false;
+            // 0 = portraitUp, 3 = portraitDown
+            if (msg.deviceOrientation == 0 || msg.deviceOrientation == 3) {
+              rotate90 = msg.sensorOrientation == 90 || msg.sensorOrientation == 270;
+            }
 
             for (int dstY = 0; dstY < msg.inputSize; dstY++) {
               for (int dstX = 0; dstX < msg.inputSize; dstX++) {
                 int srcX, srcY;
                 
-                if (isLandscape) {
-                  // Rotate 90 degrees for landscape sensors (typical Android back camera)
+                if (rotate90) {
                   srcX = (dstY * msg.width / msg.inputSize).floor();
                   srcY = msg.height - 1 - (dstX * msg.height / msg.inputSize).floor();
                 } else {
-                  // Do not rotate for portrait sensors
                   srcX = (dstX * msg.width / msg.inputSize).floor();
                   srcY = (dstY * msg.height / msg.inputSize).floor();
                 }
@@ -227,41 +271,15 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
           }
         }
 
-        // Get dynamic output tensor shapes
+        // Pre-allocate map based on known indices
         int outputTensorCount = interpreter.getOutputTensors().length;
         Map<int, Object> outputs = {};
-        
-        int boxesIdx = -1;
-        int classesIdx = -1;
-        int scoresIdx = -1;
-        int countIdx = -1;
-
         for (int i = 0; i < outputTensorCount; i++) {
-          final tensor = interpreter.getOutputTensor(i);
-          outputs[i] = _createNestedList(tensor.shape, 0);
-          
-          // Heuristic to find the correct tensors
-          if (tensor.shape.length == 3 && tensor.shape[2] == 4) boxesIdx = i;
-          else if (tensor.shape.length == 2 && tensor.shape[1] > 10) {
-            // scores or classes, usually scores are float32
-            if (scoresIdx == -1) scoresIdx = i;
-            else classesIdx = i;
-          }
-          else if (tensor.shape.length == 1) countIdx = i;
+          outputs[i] = _createNestedList(interpreter.getOutputTensor(i).shape, 0);
         }
 
-        // TfliteFlutter's runForMultipleInputs silently fails to copy flat Uint8Lists.
-        // We must manually copy the bytes to the tensor first using setTo().
         interpreter.getInputTensor(0).setTo(inputBuffer.buffer.asUint8List());
-
-        // Then we run inference and map outputs. (It will run inference once here).
         interpreter.runForMultipleInputs([inputBuffer], outputs);
-
-        // Fallback to known indices if heuristic failed
-        if (boxesIdx == -1) boxesIdx = 4;
-        if (classesIdx == -1) classesIdx = 5;
-        if (scoresIdx == -1) scoresIdx = 6;
-        if (countIdx == -1) countIdx = 7;
 
         var parsedScores = outputs[scoresIdx] as List<dynamic>;
         var parsedBoxes = outputs[boxesIdx] as List<dynamic>;
@@ -272,13 +290,23 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
 
         for (int i = 0; i < detectionCount; i++) {
           double score = parsedScores[0][i];
-          if (score >= 0.25) { // Lowered to 25% for MVP testing
+          if (score >= 0.25) {
             int classId = (parsedClasses[0][i] as double).toInt();
             
-            // Allow Laptops (73), Keyboards (76), and Monitors (72) along with Vehicles (2,3,5,7) and People (0) for demo!
-            if ([0, 2, 3, 5, 7, 72, 73, 76].contains(classId)) {
+            // Standard COCO 1-indexed IDs for road vehicles:
+            // Person: 1
+            // Car: 3, Motorcycle: 4, Bus: 6, Truck: 8
+            
+            RoadObjectType type = RoadObjectType.ignored;
+            if (classId == 1) {
+              type = RoadObjectType.vulnerableRoadUser;
+            } else if (classId == 3 || classId == 4 || classId == 6 || classId == 8) {
+              type = RoadObjectType.roadVehicle;
+            }
+
+            if (type != RoadObjectType.ignored) {
               String className = "Vehicle";
-              if (labels != null && classId < labels.length) {
+              if (classId >= 0 && classId < labels.length) {
                 className = labels[classId];
               }
               
@@ -290,12 +318,8 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
               double ymax = box[2];
               double xmax = box[3];
               
-              RoadObjectType type = RoadObjectType.ignored;
-              if (classId == 0 || classId == 1) type = RoadObjectType.vulnerableRoadUser; // person, bicycle
-              else if (classId == 2 || classId == 3 || classId == 5 || classId == 7) type = RoadObjectType.roadVehicle; // car, motorcycle, bus, truck
-              
               results.add(DetectedObject(
-                label: className, // It will literally print 'laptop' or 'car' or 'keyboard'
+                label: className,
                 confidence: score,
                 boundingBox: Rect.fromLTRB(xmin, ymin, xmax, ymax),
                 trackingId: i,
@@ -307,7 +331,6 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
 
         msg.replyPort.send(results);
       } catch (e) {
-        print("Isolate processing error: $e");
         msg.replyPort.send(<DetectedObject>[]);
       }
     }

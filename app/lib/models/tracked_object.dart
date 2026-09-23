@@ -7,6 +7,7 @@ enum ClosingRate { closing, stable, separating, unknown }
 class TrackedObject {
   final int trackId;
   final RoadObjectType type;
+  final String label;
   
   // Latest stats
   Rect smoothedBox;
@@ -15,7 +16,7 @@ class TrackedObject {
   
   // History for tracking & closing rate
   int framesMissed = 0;
-  final List<double> areaHistory = [];
+  final List<({DateTime time, double area})> areaHistory = [];
   
   // Estimations
   ProximityCategory proximity = ProximityCategory.unknown;
@@ -24,6 +25,7 @@ class TrackedObject {
   TrackedObject({
     required this.trackId,
     required this.type,
+    required this.label,
     required this.smoothedBox,
     required this.confidence,
     required this.lastSeen,
@@ -44,10 +46,10 @@ class TrackedObject {
     );
 
     double area = smoothedBox.width * smoothedBox.height;
-    areaHistory.add(area);
-    if (areaHistory.length > 5) {
-      areaHistory.removeAt(0);
-    }
+    areaHistory.add((time: now, area: area));
+    
+    // Keep history up to 2 seconds
+    areaHistory.removeWhere((entry) => now.difference(entry.time).inSeconds > 2);
     
     _updateProximity(area);
     _updateClosingRate();
@@ -71,13 +73,23 @@ class TrackedObject {
       return;
     }
 
-    double first = areaHistory.first;
-    double last = areaHistory.last;
-    double growthRatio = last / first;
+    final first = areaHistory.first;
+    final last = areaHistory.last;
+    
+    final dtSeconds = last.time.difference(first.time).inMilliseconds / 1000.0;
+    if (dtSeconds < 0.2) {
+      // Not enough time passed to judge reliably
+      closingRate = ClosingRate.unknown;
+      return;
+    }
 
-    if (growthRatio > 1.1) {
+    double growthRatio = last.area / first.area;
+    // Normalize ratio per second roughly to avoid hyper-sensitivity over long periods
+    double growthPerSecond = (growthRatio - 1.0) / dtSeconds;
+
+    if (growthPerSecond > 0.15) {
       closingRate = ClosingRate.closing;
-    } else if (growthRatio < 0.9) {
+    } else if (growthPerSecond < -0.15) {
       closingRate = ClosingRate.separating;
     } else {
       closingRate = ClosingRate.stable;

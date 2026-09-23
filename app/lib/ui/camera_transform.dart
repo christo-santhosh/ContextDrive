@@ -18,6 +18,13 @@ class CameraTransform {
     double screenAspect = screenSize.width / screenSize.height;
     double previewAspect = previewSize.width / previewSize.height;
 
+    // The camera package returns previewSize based on the raw sensor (usually landscape).
+    // If the UI is in portrait mode (!isAndroidLandscape), we must invert the preview aspect ratio
+    // to match how the CameraPreview widget renders it.
+    if (!isAndroidLandscape) {
+      previewAspect = 1.0 / previewAspect;
+    }
+
     double scaleX = 1.0;
     double scaleY = 1.0;
     double dx = 0.0;

@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 
 import '../services/tflite_service.dart';
 import '../models/context_vector.dart';
@@ -24,12 +25,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isProcessing = false;
   File? _staticImage;
+  Size? _staticImageSize;
   
   // Performance metrics
   int _fps = 0;
   int _lastInferenceTimeMs = 0;
   int _framesInLastSecond = 0;
   DateTime _lastFpsTime = DateTime.now();
+  DateTime _lastFrameProcessedTime = DateTime.now();
   
   // Use a ValueNotifier to only rebuild the bounding boxes
   final ValueNotifier<List<DetectedObject>> _detectionsNotifier = ValueNotifier([]);
@@ -71,9 +74,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // 2. Initialize Model
     appState.setState(AppState.initializingModel);
+    if (!mounted) return;
     try {
       final tflite = context.read<TfliteService>();
       await tflite.init();
+      if (!mounted) return;
     } catch (e) {
       appState.setState(AppState.modelFailed, error: e.toString());
       return;
@@ -85,14 +90,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<bool> _requestPermissions(AppStateModel appState) async {
     appState.setState(AppState.requestingPermissions);
-    
-    final status = await Permission.camera.request();
-    if (status.isGranted) {
-      return true;
-    } else {
-      appState.setState(AppState.cameraUnavailable, error: "Camera permission denied.");
+    final cameraStatus = await Permission.camera.request();
+    if (!cameraStatus.isGranted) {
+      if (mounted) appState.setState(AppState.cameraUnavailable, error: "Camera permission denied.");
       return false;
     }
+
+    final locationStatus = await Permission.location.request();
+    if (!locationStatus.isGranted) {
+      if (mounted) appState.setState(AppState.locationUnavailable, error: "Location permission denied. GPS speed unavailable.");
+      // We can technically continue without location, but for MVP we enforce it
+      return false;
+    }
+    
+    return true;
   }
 
   Future<void> _initCameraFlow(AppStateModel appState) async {
@@ -133,6 +144,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_cameraController != null && !_cameraController!.value.isStreamingImages) {
       _cameraController!.startImageStream((CameraImage image) {
         if (_isProcessing || _staticImage != null) return;
+        
+        // Target ~10 FPS maximum to prevent device overheating
+        if (DateTime.now().difference(_lastFrameProcessedTime).inMilliseconds < 100) return;
+        
         _isProcessing = true;
         _processFrame(image);
       });
@@ -142,16 +157,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _processFrame(CameraImage image) async {
     try {
       final startTime = DateTime.now();
+      _lastFrameProcessedTime = startTime;
       final tflite = context.read<TfliteService>();
-      final results = await tflite.processFrame(image);
+      
+      final sensorOrientation = _cameraController?.description.sensorOrientation ?? 90;
+      final deviceOrientation = MediaQuery.of(context).orientation == Orientation.portrait 
+          ? DeviceOrientation.portraitUp 
+          : DeviceOrientation.landscapeLeft;
+          
+      final results = await tflite.processFrame(image, sensorOrientation, deviceOrientation);
       final inferenceTime = DateTime.now().difference(startTime).inMilliseconds;
       
+      if (!mounted) return;
       _updateFps(inferenceTime);
 
-      if (mounted) {
-        _detectionsNotifier.value = results;
-        context.read<RiskManager>().updateDetections(results);
-      }
+      _detectionsNotifier.value = results;
+      context.read<RiskManager>().updateDetections(results);
     } finally {
       _isProcessing = false;
     }
@@ -184,8 +205,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _detectionsNotifier.value = [];
       });
 
+      if (!mounted) return;
       final tflite = context.read<TfliteService>();
       final startTime = DateTime.now();
+      
+      final imgBytes = await pickedFile.readAsBytes();
+      final decodedImage = await decodeImageFromList(imgBytes);
+      _staticImageSize = Size(decodedImage.width.toDouble(), decodedImage.height.toDouble());
+      
       final results = await tflite.processStaticImage(pickedFile.path);
       
       setState(() {
@@ -193,10 +220,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fps = 0;
       });
 
-      if (mounted) {
-        _detectionsNotifier.value = results;
-        context.read<RiskManager>().updateDetections(results);
-      }
+      if (!mounted) return;
+
+      _detectionsNotifier.value = results;
+      context.read<RiskManager>().updateDetections(results);
     }
   }
 
@@ -236,6 +263,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ],
           ),
         );
+      case AppState.locationUnavailable:
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.location_off, size: 64, color: Colors.orange),
+              const SizedBox(height: 16),
+              Text(state.errorMessage),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => openAppSettings(),
+                child: const Text("Open Settings"),
+              ),
+              TextButton(
+                onPressed: () => _startAppFlow(),
+                child: const Text("Retry"),
+              )
+            ],
+          ),
+        );
       case AppState.modelFailed:
       case AppState.error:
         return Center(
@@ -254,10 +301,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         );
       case AppState.ready:
-      case AppState.locationUnavailable:
         // Render the main preview
         Size previewSize = Size.zero;
-        if (_cameraController != null && _cameraController!.value.isInitialized) {
+        if (_staticImageSize != null) {
+          previewSize = _staticImageSize!;
+        } else if (_cameraController != null && _cameraController!.value.isInitialized) {
           previewSize = _cameraController!.value.previewSize ?? Size.zero;
           // Swap width/height if orientation is portrait (which is true for Android phones)
           if (MediaQuery.of(context).orientation == Orientation.portrait && previewSize.width > previewSize.height) {
@@ -298,6 +346,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onPressed: () {
                 setState(() {
                   _staticImage = null;
+                  _staticImageSize = null;
                   _detectionsNotifier.value = [];
                 });
                 _resumeCamera();
@@ -347,6 +396,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               break;
             case RiskLevel.low:
               riskColor = Colors.green;
+              break;
+            case RiskLevel.limited:
+              riskColor = Colors.grey;
               break;
           }
 

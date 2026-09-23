@@ -26,6 +26,7 @@ class ObjectTracker {
       for (int i = 0; i < detections.length; i++) {
         if (matchedDetections[i]) continue;
         if (detections[i].type != track.type) continue; // Only match same type
+        if (detections[i].label != track.label) continue; // Only match same class (e.g. car -> car)
 
         double iou = _calculateIoU(track.smoothedBox, detections[i].boundingBox);
         if (iou > bestIou) {
@@ -50,6 +51,7 @@ class ObjectTracker {
         _tracks.add(TrackedObject(
           trackId: _nextTrackId++,
           type: detections[i].type,
+          label: detections[i].label,
           smoothedBox: detections[i].boundingBox,
           confidence: detections[i].confidence,
           lastSeen: now,

@@ -749,6 +749,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  sunrise_sunset_calc:
+    dependency: "direct main"
+    description:
+      name: sunrise_sunset_calc
+      sha256: e5ef4a92c0271fb62873d57241fd9d9c1868e3f73e4cfb3de37f9dfd1811d0b9
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.0"
   term_glyph:
     dependency: transitive
     description:

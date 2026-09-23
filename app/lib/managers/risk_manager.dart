@@ -32,26 +32,31 @@ class RiskManager extends ChangeNotifier {
   int _visibility = 10000;
   List<TrackedObject> _currentTracks = [];
 
+  DateTime? _elevatedStartTime;
+  RiskLevel? _elevatedLevel;
+  DateTime? _cooldownEndTime;
+
+  bool _isWeatherAvailable = false;
+
   StreamSubscription<Position>? _positionSubscription;
   Timer? _evaluationTimer;
 
   RiskManager(this._gpsService, this._weatherService, this._timeContextService);
 
   Future<void> start() async {
-    bool hasLocation = await _gpsService.requestPermission();
-    if (hasLocation) {
-      _positionSubscription = _gpsService.getPositionStream().listen((pos) {
-        _currentSpeed = _gpsService.getSpeedKmh(pos);
-        _lastSpeedTimestamp = DateTime.now();
-      });
-    }
+    // Permission is already verified by HomeScreen during AppState.requestingPermissions
+    _positionSubscription = _gpsService.getPositionStream().listen((pos) {
+      _currentSpeed = _gpsService.getSpeedKmh(pos);
+      _lastSpeedTimestamp = DateTime.now();
 
-    // Mock initial location for weather fetch
-    final weather = await _weatherService.getWeather(0, 0);
-    if (weather != null) {
-      _isRaining = weather.isRaining;
-      _visibility = weather.visibilityMeters;
-    }
+      _timeContextService.updateLocation(pos.latitude, pos.longitude);
+
+      _weatherService.getWeather(pos.latitude, pos.longitude).then((weather) {
+        _isRaining = weather.isRaining;
+        _visibility = weather.visibilityMeters;
+        _isWeatherAvailable = weather.isAvailable;
+      });
+    });
 
     // Evaluate risk periodically based on latest state
     _evaluationTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
@@ -76,17 +81,12 @@ class RiskManager extends ChangeNotifier {
 
     double closestDist = 1.0;
     int nearbyVehiclesCount = 0;
-    bool isClosingIn = false;
+    TrackedObject? closestTrack;
     
     for (var track in _currentTracks) {
       if (track.type == RoadObjectType.roadVehicle) {
         nearbyVehiclesCount++;
         
-        if (track.closingRate == ClosingRate.closing) {
-          isClosingIn = true;
-        }
-
-        // Proximity categories mapped to the engine's 0-1 scale expectation (or update engine)
         double estimatedDistance = 1.0;
         switch (track.proximity) {
           case ProximityCategory.veryNear: estimatedDistance = 0.1; break;
@@ -99,25 +99,64 @@ class RiskManager extends ChangeNotifier {
 
         if (estimatedDistance < closestDist) {
           closestDist = estimatedDistance;
+          closestTrack = track;
         }
       }
     }
+
+    bool isClosingIn = closestTrack?.closingRate == ClosingRate.closing;
 
     final contextVector = ContextVector(
       currentSpeed: speedForRisk,
       isRaining: _isRaining,
       isNight: isNight,
       visibility: _visibility,
+      isWeatherAvailable: _isWeatherAvailable,
       nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
       isClosingIn: isClosingIn,
     );
 
     final newAssessment = _riskEngine.assessRisk(contextVector);
-    if (_currentAssessment.level != newAssessment.level || 
-        _currentAssessment.howExplanation != newAssessment.howExplanation) {
-      _currentAssessment = newAssessment;
-      notifyListeners();
+    
+    // Hysteresis & Cooldown Logic based on timestamps
+    if (newAssessment.level == RiskLevel.high || newAssessment.level == RiskLevel.moderate) {
+      bool isTrackFresh = closestTrack != null && now.difference(closestTrack.lastSeen).inMilliseconds < 1000;
+      
+      if (isTrackFresh) {
+        if (_elevatedLevel == newAssessment.level) {
+          if (_elevatedStartTime != null && now.difference(_elevatedStartTime!).inMilliseconds > 1000) {
+            // Elevated for 1 second continuously based on fresh tracks
+            _currentAssessment = newAssessment;
+            // Set cooldown when dropping back down (brief dropout protection)
+            _cooldownEndTime = now.add(const Duration(seconds: 3));
+            notifyListeners();
+          }
+        } else {
+          _elevatedLevel = newAssessment.level;
+          _elevatedStartTime = now;
+        }
+      }
+    } else {
+      // Dropping risk to LOW or LIMITED
+      _elevatedLevel = null;
+      _elevatedStartTime = null;
+      
+      bool canDropRisk = _cooldownEndTime == null || now.isAfter(_cooldownEndTime!);
+      
+      // Clear rule: if no vehicles are nearby at all, we bypass cooldown to drop risk immediately
+      if (nearbyVehiclesCount == 0) {
+        canDropRisk = true;
+        _cooldownEndTime = null;
+      }
+      
+      if (canDropRisk) {
+        if (_currentAssessment.level != newAssessment.level || 
+            _currentAssessment.howExplanation != newAssessment.howExplanation) {
+          _currentAssessment = newAssessment;
+          notifyListeners();
+        }
+      }
     }
   }
 

@@ -1,0 +1,37 @@
+# Project root
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# Local configuration
+.env
+.env.local
+
+# Build artifacts
+output.mp4
+
+# Test recordings
+*.mp4
+!sample.mp4

@@ -13,7 +13,7 @@ class RiskEngine {
     bool highSpeed = hasSpeed && context.currentSpeed! > 60.0;
     bool veryHighSpeed = hasSpeed && context.currentSpeed! > 80.0;
     
-    bool poorVisibility = context.isRaining || context.visibility < 1000 || context.isNight;
+    bool poorVisibility = context.isWeatherAvailable && (context.isRaining || context.visibility < 1000 || context.isNight);
     
     // Convert generic distance to categories based on our mapping in RiskManager
     bool isVeryNear = context.closestVehicleDistance <= 0.1;
@@ -35,7 +35,7 @@ class RiskEngine {
       why = "You cannot see far enough ahead to stop safely at this speed.";
       recommendation = "Reduce speed to match visibility conditions.";
     } else if (!hasSpeed) {
-      level = RiskLevel.low;
+      level = RiskLevel.limited;
       how = "Sensor data limited.";
       why = "GPS speed is unavailable or stale.";
       recommendation = "Drive with caution; assistance features limited.";
