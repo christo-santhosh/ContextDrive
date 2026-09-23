@@ -7,7 +7,6 @@ class CameraTransform {
     Rect normalizedBox,
     Size screenSize,
     Size previewSize,
-    bool isAndroidLandscape,
   ) {
     // If the image was squeezed into the ML model ignoring aspect ratio (which tflite_service does currently),
     // the normalized coordinates are direct percentages of the raw sensor.

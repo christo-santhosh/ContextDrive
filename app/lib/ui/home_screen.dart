@@ -72,9 +72,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool hasPermission = await _requestPermissions(appState);
     if (!hasPermission) return;
 
-    if (mounted) {
-      context.read<RiskManager>().start();
-    }
+    // Location permission is checked later, but we need to start RiskManager
+    // with the knowledge of whether location is available. We will do this 
+    // after we ask for location.
 
     // 2. Initialize Model
     appState.setState(AppState.initializingModel);
@@ -101,13 +101,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final locationStatus = await Permission.location.request();
-    if (!locationStatus.isGranted) {
+    bool locationAvailable = locationStatus.isGranted;
+    
+    if (!locationAvailable) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Location permission denied. GPS speed unavailable. Using limited risk assessment.")),
         );
       }
       // Continue without location to allow camera-based detection
+    }
+    
+    if (mounted) {
+      context.read<RiskManager>().start(locationAvailable: locationAvailable);
     }
     
     return true;
@@ -374,12 +380,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildBoundingBoxes(BuildContext context, Size previewSize) {
-    bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     return ValueListenableBuilder<List<DetectedObject>>(
       valueListenable: _detectionsNotifier,
       builder: (context, detections, child) {
         return CustomPaint(
-          painter: BoundingBoxPainter(detections, previewSize, isLandscape),
+          painter: BoundingBoxPainter(detections, previewSize),
         );
       },
     );
@@ -443,9 +448,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 class BoundingBoxPainter extends CustomPainter {
   final List<DetectedObject> detections;
   final Size previewSize;
-  final bool isLandscape;
 
-  BoundingBoxPainter(this.detections, this.previewSize, this.isLandscape);
+  BoundingBoxPainter(this.detections, this.previewSize);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -462,7 +466,6 @@ class BoundingBoxPainter extends CustomPainter {
         det.boundingBox,
         size,
         effectivePreviewSize,
-        isLandscape,
       );
       
       canvas.drawRect(rect, paint);

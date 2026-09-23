@@ -45,24 +45,25 @@ class RiskManager extends ChangeNotifier {
 
   RiskManager(this._gpsService, this._weatherService, this._timeContextService);
 
-  Future<void> start() async {
+  Future<void> start({required bool locationAvailable}) async {
     if (_isStarted) return;
     _isStarted = true;
 
-    // Permission is already verified by HomeScreen during AppState.requestingPermissions
-    _positionSubscription = _gpsService.getPositionStream().listen((pos) {
-      _currentSpeed = _gpsService.getSpeedKmh(pos);
-      _lastSpeedTimestamp = DateTime.now();
+    if (locationAvailable) {
+      _positionSubscription = _gpsService.getPositionStream().listen((pos) {
+        _currentSpeed = _gpsService.getSpeedKmh(pos);
+        _lastSpeedTimestamp = DateTime.now();
 
-      _timeContextService.updateLocation(pos.latitude, pos.longitude);
+        _timeContextService.updateLocation(pos.latitude, pos.longitude);
 
-      _weatherService.getWeather(pos.latitude, pos.longitude).then((weather) {
-        _isRaining = weather.isRaining;
-        _visibility = weather.visibilityMeters;
-        _isWeatherAvailable = weather.isAvailable;
-        _weatherLastUpdated = weather.lastUpdated;
+        _weatherService.getWeather(pos.latitude, pos.longitude).then((weather) {
+          _isRaining = weather.isRaining;
+          _visibility = weather.visibilityMeters;
+          _isWeatherAvailable = weather.isAvailable;
+          _weatherLastUpdated = weather.lastUpdated;
+        });
       });
-    });
+    }
 
     // Evaluate risk periodically based on latest state
     _evaluationTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
