@@ -72,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool hasPermission = await _requestPermissions(appState);
     if (!hasPermission) return;
 
+    if (mounted) {
+      context.read<RiskManager>().start();
+    }
+
     // 2. Initialize Model
     appState.setState(AppState.initializingModel);
     if (!mounted) return;
@@ -98,9 +102,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final locationStatus = await Permission.location.request();
     if (!locationStatus.isGranted) {
-      if (mounted) appState.setState(AppState.locationUnavailable, error: "Location permission denied. GPS speed unavailable.");
-      // We can technically continue without location, but for MVP we enforce it
-      return false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Location permission denied. GPS speed unavailable. Using limited risk assessment.")),
+        );
+      }
+      // Continue without location to allow camera-based detection
     }
     
     return true;
@@ -319,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _staticImage != null 
                 ? Image.file(_staticImage!, fit: BoxFit.cover)
                 : CameraPreview(_cameraController!),
-            _buildBoundingBoxes(previewSize),
+            _buildBoundingBoxes(context, previewSize),
             _buildRiskOverlay(),
             Positioned(
               top: 10,
@@ -366,12 +373,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildBoundingBoxes(Size previewSize) {
+  Widget _buildBoundingBoxes(BuildContext context, Size previewSize) {
+    bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     return ValueListenableBuilder<List<DetectedObject>>(
       valueListenable: _detectionsNotifier,
       builder: (context, detections, child) {
         return CustomPaint(
-          painter: BoundingBoxPainter(detections, previewSize),
+          painter: BoundingBoxPainter(detections, previewSize, isLandscape),
         );
       },
     );
@@ -435,8 +443,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 class BoundingBoxPainter extends CustomPainter {
   final List<DetectedObject> detections;
   final Size previewSize;
+  final bool isLandscape;
 
-  BoundingBoxPainter(this.detections, this.previewSize);
+  BoundingBoxPainter(this.detections, this.previewSize, this.isLandscape);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -453,7 +462,7 @@ class BoundingBoxPainter extends CustomPainter {
         det.boundingBox,
         size,
         effectivePreviewSize,
-        true, // isAndroidLandscape logic is handled implicitly by previewSize swapping
+        isLandscape,
       );
       
       canvas.drawRect(rect, paint);

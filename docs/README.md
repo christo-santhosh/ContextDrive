@@ -51,7 +51,7 @@ python convert_to_tflite.py
 This will produce a new `detect.tflite` model. Copy it to `app/assets/`.
 
 ## Configuration
-- **Weather API Key:** (Optional) To use real OpenWeatherMap data instead of the fallback, supply an API key at build time. Note: if not supplied, the app will fall back to mocked 'clear sky' data.
+- **Weather API Key:** (Optional) To use real OpenWeatherMap data instead of the fallback, supply an API key at build time. Note: if not supplied, the app will fall back to an 'unavailable' weather status, gracefully degrading the risk assessment.
   ```bash
   flutter run --dart-define=WEATHER_API_KEY=your_key_here
   ```

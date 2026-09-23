@@ -12,8 +12,7 @@ class RiskEngine {
     bool hasSpeed = context.currentSpeed != null;
     bool highSpeed = hasSpeed && context.currentSpeed! > 60.0;
     bool veryHighSpeed = hasSpeed && context.currentSpeed! > 80.0;
-    
-    bool poorVisibility = context.isWeatherAvailable && (context.isRaining || context.visibility < 1000 || context.isNight);
+    bool poorVisibility = context.isNight || (context.isWeatherAvailable && (context.isRaining || context.visibility < 1000));
     
     // Convert generic distance to categories based on our mapping in RiskManager
     bool isVeryNear = context.closestVehicleDistance <= 0.1;

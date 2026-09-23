@@ -33,8 +33,8 @@ class ContextDriveApp extends StatelessWidget {
             ctx.read<GpsService>(),
             ctx.read<WeatherService>(),
             ctx.read<TimeContextService>(),
-          )..start(),
-          update: (ctx, gps, weather, time, previous) => previous ?? RiskManager(gps, weather, time)..start(),
+          ),
+          update: (ctx, gps, weather, time, previous) => previous ?? RiskManager(gps, weather, time),
         ),
       ],
       child: MaterialApp(

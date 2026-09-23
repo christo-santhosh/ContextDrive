@@ -37,13 +37,18 @@ class RiskManager extends ChangeNotifier {
   DateTime? _cooldownEndTime;
 
   bool _isWeatherAvailable = false;
+  DateTime? _weatherLastUpdated;
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _evaluationTimer;
+  bool _isStarted = false;
 
   RiskManager(this._gpsService, this._weatherService, this._timeContextService);
 
   Future<void> start() async {
+    if (_isStarted) return;
+    _isStarted = true;
+
     // Permission is already verified by HomeScreen during AppState.requestingPermissions
     _positionSubscription = _gpsService.getPositionStream().listen((pos) {
       _currentSpeed = _gpsService.getSpeedKmh(pos);
@@ -55,6 +60,7 @@ class RiskManager extends ChangeNotifier {
         _isRaining = weather.isRaining;
         _visibility = weather.visibilityMeters;
         _isWeatherAvailable = weather.isAvailable;
+        _weatherLastUpdated = weather.lastUpdated;
       });
     });
 
@@ -106,12 +112,17 @@ class RiskManager extends ChangeNotifier {
 
     bool isClosingIn = closestTrack?.closingRate == ClosingRate.closing;
 
+    bool weatherAvailable = _isWeatherAvailable;
+    if (_weatherLastUpdated != null && now.difference(_weatherLastUpdated!).inMinutes > 30) {
+      weatherAvailable = false;
+    }
+
     final contextVector = ContextVector(
       currentSpeed: speedForRisk,
       isRaining: _isRaining,
       isNight: isNight,
       visibility: _visibility,
-      isWeatherAvailable: _isWeatherAvailable,
+      isWeatherAvailable: weatherAvailable,
       nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
       isClosingIn: isClosingIn,
