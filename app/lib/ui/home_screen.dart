@@ -1,12 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
-import '../services/tflite_service.dart';
-import '../models/detected_object.dart';
-import '../models/context_vector.dart';
-import '../managers/risk_manager.dart';
-import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../services/tflite_service.dart';
+import '../models/context_vector.dart';
+import '../models/detected_object.dart';
+import '../models/app_state.dart';
+import '../managers/risk_manager.dart';
+import 'widgets/diagnostic_panel.dart';
+import 'camera_transform.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,35 +20,98 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isProcessing = false;
   File? _staticImage;
   
-  // Use a ValueNotifier to only rebuild the bounding boxes, not the whole camera preview
+  // Performance metrics
+  int _fps = 0;
+  int _lastInferenceTimeMs = 0;
+  int _framesInLastSecond = 0;
+  DateTime _lastFpsTime = DateTime.now();
+  
+  // Use a ValueNotifier to only rebuild the bounding boxes
   final ValueNotifier<List<DetectedObject>> _detectionsNotifier = ValueNotifier([]);
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
-    _initializeML();
+    WidgetsBinding.instance.addObserver(this);
+    _startAppFlow();
   }
 
-  Future<void> _initializeML() async {
-    final tflite = context.read<TfliteService>();
-    await tflite.init();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cameraController?.dispose();
+    _detectionsNotifier.dispose();
+    super.dispose();
   }
 
-  Future<void> _initializeCamera() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
+    }
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _cameraController?.stopImageStream();
+    } else if (state == AppLifecycleState.resumed) {
+      _resumeCamera();
+    }
+  }
+
+  Future<void> _startAppFlow() async {
+    final appState = context.read<AppStateModel>();
+    appState.setState(AppState.starting);
+
+    // 1. Request permissions
+    bool hasPermission = await _requestPermissions(appState);
+    if (!hasPermission) return;
+
+    // 2. Initialize Model
+    appState.setState(AppState.initializingModel);
+    try {
+      final tflite = context.read<TfliteService>();
+      await tflite.init();
+    } catch (e) {
+      appState.setState(AppState.modelFailed, error: e.toString());
+      return;
+    }
+
+    // 3. Initialize Camera
+    await _initCameraFlow(appState);
+  }
+
+  Future<bool> _requestPermissions(AppStateModel appState) async {
+    appState.setState(AppState.requestingPermissions);
+    
+    final status = await Permission.camera.request();
+    if (status.isGranted) {
+      return true;
+    } else {
+      appState.setState(AppState.cameraUnavailable, error: "Camera permission denied.");
+      return false;
+    }
+  }
+
+  Future<void> _initCameraFlow(AppStateModel appState) async {
+    appState.setState(AppState.initializingCamera);
     try {
       final cameras = await availableCameras();
-      if (cameras.isEmpty) return;
+      if (cameras.isEmpty) {
+        appState.setState(AppState.cameraUnavailable, error: "No cameras found.");
+        return;
+      }
 
       final backCamera = cameras.firstWhere(
         (cam) => cam.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
+
+      if (_cameraController != null) {
+        await _cameraController!.dispose();
+      }
 
       _cameraController = CameraController(
         backCamera,
@@ -54,25 +122,34 @@ class _HomeScreenState extends State<HomeScreen> {
       await _cameraController!.initialize();
       if (!mounted) return;
 
+      _resumeCamera();
+      appState.setState(AppState.ready);
+    } catch (e) {
+      appState.setState(AppState.error, error: "Camera init error: $e");
+    }
+  }
+
+  void _resumeCamera() {
+    if (_cameraController != null && !_cameraController!.value.isStreamingImages) {
       _cameraController!.startImageStream((CameraImage image) {
-        if (_isProcessing) return;
+        if (_isProcessing || _staticImage != null) return;
         _isProcessing = true;
         _processFrame(image);
       });
-
-      setState(() {});
-    } catch (e) {
-      debugPrint("Camera Error: $e");
     }
   }
 
   Future<void> _processFrame(CameraImage image) async {
     try {
+      final startTime = DateTime.now();
       final tflite = context.read<TfliteService>();
       final results = await tflite.processFrame(image);
+      final inferenceTime = DateTime.now().difference(startTime).inMilliseconds;
       
+      _updateFps(inferenceTime);
+
       if (mounted) {
-        _detectionsNotifier.value = results; // Updates only the overlay
+        _detectionsNotifier.value = results;
         context.read<RiskManager>().updateDetections(results);
       }
     } finally {
@@ -80,11 +157,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _cameraController?.dispose();
-    _detectionsNotifier.dispose();
-    super.dispose();
+  void _updateFps(int inferenceTime) {
+    _framesInLastSecond++;
+    _lastInferenceTimeMs = inferenceTime;
+    final now = DateTime.now();
+    if (now.difference(_lastFpsTime).inSeconds >= 1) {
+      setState(() {
+        _fps = _framesInLastSecond;
+      });
+      _framesInLastSecond = 0;
+      _lastFpsTime = now;
+    }
   }
 
   Future<void> _pickStaticImage() async {
@@ -98,13 +181,18 @@ class _HomeScreenState extends State<HomeScreen> {
       
       setState(() {
         _staticImage = File(pickedFile.path);
-        _detectionsNotifier.value = []; // Clear old detections
+        _detectionsNotifier.value = [];
       });
 
-      // Run inference on the static image
       final tflite = context.read<TfliteService>();
+      final startTime = DateTime.now();
       final results = await tflite.processStaticImage(pickedFile.path);
       
+      setState(() {
+        _lastInferenceTimeMs = DateTime.now().difference(startTime).inMilliseconds;
+        _fps = 0;
+      });
+
       if (mounted) {
         _detectionsNotifier.value = results;
         context.read<RiskManager>().updateDetections(results);
@@ -112,12 +200,94 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildStateUI(AppStateModel state) {
+    switch (state.currentState) {
+      case AppState.starting:
+      case AppState.requestingPermissions:
+        return const Center(child: Text("Requesting permissions..."));
+      case AppState.initializingModel:
+        return const Center(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("Loading object detector...")
+          ],
+        ));
+      case AppState.initializingCamera:
+        return const Center(child: Text("Initializing camera..."));
+      case AppState.cameraUnavailable:
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.videocam_off, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(state.errorMessage),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => openAppSettings(),
+                child: const Text("Open Settings"),
+              ),
+              TextButton(
+                onPressed: () => _startAppFlow(),
+                child: const Text("Retry"),
+              )
+            ],
+          ),
+        );
+      case AppState.modelFailed:
+      case AppState.error:
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(state.errorMessage),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => _startAppFlow(),
+                child: const Text("Retry"),
+              )
+            ],
+          ),
+        );
+      case AppState.ready:
+      case AppState.locationUnavailable:
+        // Render the main preview
+        Size previewSize = Size.zero;
+        if (_cameraController != null && _cameraController!.value.isInitialized) {
+          previewSize = _cameraController!.value.previewSize ?? Size.zero;
+          // Swap width/height if orientation is portrait (which is true for Android phones)
+          if (MediaQuery.of(context).orientation == Orientation.portrait && previewSize.width > previewSize.height) {
+            previewSize = Size(previewSize.height, previewSize.width);
+          }
+        }
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            _staticImage != null 
+                ? Image.file(_staticImage!, fit: BoxFit.cover)
+                : CameraPreview(_cameraController!),
+            _buildBoundingBoxes(previewSize),
+            _buildRiskOverlay(),
+            Positioned(
+              top: 10,
+              left: 10,
+              child: DiagnosticPanel(
+                fps: _fps,
+                inferenceTimeMs: _lastInferenceTimeMs,
+              ),
+            ),
+          ],
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('ContextDrive'),
@@ -130,20 +300,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   _staticImage = null;
                   _detectionsNotifier.value = [];
                 });
-                _initializeCamera();
+                _resumeCamera();
               },
             )
         ],
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          _staticImage != null 
-              ? Image.file(_staticImage!, fit: BoxFit.cover)
-              : CameraPreview(_cameraController!),
-          _buildBoundingBoxes(),
-          _buildRiskOverlay(),
-        ],
+      body: Consumer<AppStateModel>(
+        builder: (context, appState, _) {
+          return _buildStateUI(appState);
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _pickStaticImage,
@@ -152,12 +317,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBoundingBoxes() {
+  Widget _buildBoundingBoxes(Size previewSize) {
     return ValueListenableBuilder<List<DetectedObject>>(
       valueListenable: _detectionsNotifier,
       builder: (context, detections, child) {
         return CustomPaint(
-          painter: BoundingBoxPainter(detections),
+          painter: BoundingBoxPainter(detections, previewSize),
         );
       },
     );
@@ -217,8 +382,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class BoundingBoxPainter extends CustomPainter {
   final List<DetectedObject> detections;
+  final Size previewSize;
 
-  BoundingBoxPainter(this.detections);
+  BoundingBoxPainter(this.detections, this.previewSize);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -227,13 +393,17 @@ class BoundingBoxPainter extends CustomPainter {
       ..strokeWidth = 3.0
       ..color = Colors.redAccent;
 
+    // Use full screen size for static image for MVP if previewSize is empty
+    Size effectivePreviewSize = previewSize == Size.zero ? size : previewSize;
+
     for (var det in detections) {
-      final rect = Rect.fromLTRB(
-        det.boundingBox.left * size.width,
-        det.boundingBox.top * size.height,
-        det.boundingBox.right * size.width,
-        det.boundingBox.bottom * size.height,
+      final rect = CameraTransform.transformBoundingBox(
+        det.boundingBox,
+        size,
+        effectivePreviewSize,
+        true, // isAndroidLandscape logic is handled implicitly by previewSize swapping
       );
+      
       canvas.drawRect(rect, paint);
       
       final textPainter = TextPainter(

@@ -39,6 +39,7 @@ class GpsService {
   double getSpeedKmh(Position position) {
     // position.speed is in m/s
     if (position.speed < 0) return 0;
+    // Basic outlier rejection (e.g., > 300 km/h is unlikely for a car, but we just return it anyway)
     return position.speed * 3.6;
   }
 }

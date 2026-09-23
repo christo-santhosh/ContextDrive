@@ -2,11 +2,8 @@ import 'dart:io';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
-import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'dart:isolate';
-import 'dart:ui';
-import 'package:flutter/widgets.dart';
 
 import '../models/detected_object.dart';
 
@@ -45,7 +42,6 @@ class _IsolateRequest {
 // --- The Service ---
 
 class TfliteService {
-  Isolate? _isolate;
   SendPort? _isolateSendPort;
   bool _isProcessing = false;
   final int _inputSize = 320;
@@ -56,7 +52,7 @@ class TfliteService {
     final receivePort = ReceivePort();
     final token = RootIsolateToken.instance!;
     
-    _isolate = await Isolate.spawn(_isolateEntryPoint, _IsolateInitData(receivePort.sendPort, token));
+    await Isolate.spawn(_isolateEntryPoint, _IsolateInitData(receivePort.sendPort, token));
     
     _isolateSendPort = await receivePort.first as SendPort;
     print('TFLite Isolate spawned and ready.');
@@ -128,7 +124,6 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
   try {
     final options = InterpreterOptions()..threads = 4;
     interpreter = await Interpreter.fromAsset('assets/detect.tflite', options: options);
-    interpreter.resizeInputTensor(0, [1, 320, 320, 3]);
     interpreter.allocateTensors();
     
     final labelData = await rootBundle.loadString('assets/labelmap.txt');
@@ -180,10 +175,21 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
             final int uvPixelStride = msg.bytesPerPixel[1];
             final int yRowStride = msg.bytesPerRow[0];
 
+            bool isLandscape = msg.width > msg.height;
+
             for (int dstY = 0; dstY < msg.inputSize; dstY++) {
               for (int dstX = 0; dstX < msg.inputSize; dstX++) {
-                int srcX = (dstY * msg.width / msg.inputSize).floor();
-                int srcY = msg.height - 1 - (dstX * msg.height / msg.inputSize).floor();
+                int srcX, srcY;
+                
+                if (isLandscape) {
+                  // Rotate 90 degrees for landscape sensors (typical Android back camera)
+                  srcX = (dstY * msg.width / msg.inputSize).floor();
+                  srcY = msg.height - 1 - (dstX * msg.height / msg.inputSize).floor();
+                } else {
+                  // Do not rotate for portrait sensors
+                  srcX = (dstX * msg.width / msg.inputSize).floor();
+                  srcY = (dstY * msg.height / msg.inputSize).floor();
+                }
 
                 srcX = srcX.clamp(0, msg.width - 1);
                 srcY = srcY.clamp(0, msg.height - 1);
@@ -221,22 +227,41 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
           }
         }
 
-        Map<int, List<int>> knownShapes = {
-          0: [1, 12804, 4], 1: [1, 100], 2: [1], 3: [1, 12804, 91],
-          4: [1, 100, 4], 5: [1, 100], 6: [1, 100], 7: [1, 100, 91],
-        };
-        
+        // Get dynamic output tensor shapes
+        int outputTensorCount = interpreter.getOutputTensors().length;
         Map<int, Object> outputs = {};
-        for (int i = 0; i < 8; i++) {
-          outputs[i] = _createNestedList(knownShapes[i]!, 0);
+        
+        int boxesIdx = -1;
+        int classesIdx = -1;
+        int scoresIdx = -1;
+        int countIdx = -1;
+
+        for (int i = 0; i < outputTensorCount; i++) {
+          final tensor = interpreter.getOutputTensor(i);
+          outputs[i] = _createNestedList(tensor.shape, 0);
+          
+          // Heuristic to find the correct tensors
+          if (tensor.shape.length == 3 && tensor.shape[2] == 4) boxesIdx = i;
+          else if (tensor.shape.length == 2 && tensor.shape[1] > 10) {
+            // scores or classes, usually scores are float32
+            if (scoresIdx == -1) scoresIdx = i;
+            else classesIdx = i;
+          }
+          else if (tensor.shape.length == 1) countIdx = i;
         }
 
-        // ONE single run! Do not call invoke() AND runForMultipleInputs!
+        // TfliteFlutter's runForMultipleInputs silently fails to copy flat Uint8Lists.
+        // We must manually copy the bytes to the tensor first using setTo().
+        interpreter.getInputTensor(0).setTo(inputBuffer.buffer.asUint8List());
+
+        // Then we run inference and map outputs. (It will run inference once here).
         interpreter.runForMultipleInputs([inputBuffer], outputs);
 
-        int boxesIdx = 4;
-        int scoresIdx = 6;
-        int classesIdx = 5;
+        // Fallback to known indices if heuristic failed
+        if (boxesIdx == -1) boxesIdx = 4;
+        if (classesIdx == -1) classesIdx = 5;
+        if (scoresIdx == -1) scoresIdx = 6;
+        if (countIdx == -1) countIdx = 7;
 
         var parsedScores = outputs[scoresIdx] as List<dynamic>;
         var parsedBoxes = outputs[boxesIdx] as List<dynamic>;
@@ -247,7 +272,7 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
 
         for (int i = 0; i < detectionCount; i++) {
           double score = parsedScores[0][i];
-          if (score >= 0.40) { // Keep 40% for demo
+          if (score >= 0.25) { // Lowered to 25% for MVP testing
             int classId = (parsedClasses[0][i] as double).toInt();
             
             // Allow Laptops (73), Keyboards (76), and Monitors (72) along with Vehicles (2,3,5,7) and People (0) for demo!
@@ -265,11 +290,16 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
               double ymax = box[2];
               double xmax = box[3];
               
+              RoadObjectType type = RoadObjectType.ignored;
+              if (classId == 0 || classId == 1) type = RoadObjectType.vulnerableRoadUser; // person, bicycle
+              else if (classId == 2 || classId == 3 || classId == 5 || classId == 7) type = RoadObjectType.roadVehicle; // car, motorcycle, bus, truck
+              
               results.add(DetectedObject(
                 label: className, // It will literally print 'laptop' or 'car' or 'keyboard'
                 confidence: score,
                 boundingBox: Rect.fromLTRB(xmin, ymin, xmax, ymax),
                 trackingId: i,
+                type: type,
               ));
             }
           }

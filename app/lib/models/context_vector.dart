@@ -1,5 +1,5 @@
 class ContextVector {
-  final double currentSpeed;
+  final double? currentSpeed;
   final bool isRaining;
   final bool isNight;
   final int visibility;
@@ -8,7 +8,7 @@ class ContextVector {
   final bool isClosingIn; // true if the vehicle is getting closer
 
   ContextVector({
-    required this.currentSpeed,
+    this.currentSpeed,
     required this.isRaining,
     required this.isNight,
     required this.visibility,

@@ -6,6 +6,7 @@ import 'services/tflite_service.dart';
 import 'services/weather_service.dart';
 import 'services/time_context_service.dart';
 import 'managers/risk_manager.dart';
+import 'models/app_state.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ class ContextDriveApp extends StatelessWidget {
         Provider<WeatherService>(create: (_) => WeatherService()),
         Provider<TimeContextService>(create: (_) => TimeContextService()),
         Provider<TfliteService>(create: (_) => TfliteService()),
+        ChangeNotifierProvider<AppStateModel>(create: (_) => AppStateModel()),
         ChangeNotifierProxyProvider3<GpsService, WeatherService, TimeContextService, RiskManager>(
           create: (ctx) => RiskManager(
             ctx.read<GpsService>(),

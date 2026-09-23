@@ -7,12 +7,15 @@ import '../models/detected_object.dart';
 import '../services/gps_service.dart';
 import '../services/weather_service.dart';
 import '../services/time_context_service.dart';
+import '../models/tracked_object.dart';
+import 'object_tracker.dart';
 
 class RiskManager extends ChangeNotifier {
   final GpsService _gpsService;
   final WeatherService _weatherService;
   final TimeContextService _timeContextService;
   final RiskEngine _riskEngine = RiskEngine();
+  final ObjectTracker _tracker = ObjectTracker();
 
   RiskAssessment _currentAssessment = RiskAssessment(
     level: RiskLevel.low,
@@ -23,10 +26,11 @@ class RiskManager extends ChangeNotifier {
 
   RiskAssessment get currentAssessment => _currentAssessment;
 
-  double _currentSpeed = 0.0;
+  double? _currentSpeed;
+  DateTime? _lastSpeedTimestamp;
   bool _isRaining = false;
   int _visibility = 10000;
-  List<DetectedObject> _recentDetections = [];
+  List<TrackedObject> _currentTracks = [];
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _evaluationTimer;
@@ -38,6 +42,7 @@ class RiskManager extends ChangeNotifier {
     if (hasLocation) {
       _positionSubscription = _gpsService.getPositionStream().listen((pos) {
         _currentSpeed = _gpsService.getSpeedKmh(pos);
+        _lastSpeedTimestamp = DateTime.now();
       });
     }
 
@@ -55,22 +60,43 @@ class RiskManager extends ChangeNotifier {
   }
 
   void updateDetections(List<DetectedObject> detections) {
-    _recentDetections = detections;
+    _currentTracks = _tracker.updateTracks(detections);
   }
 
   void _evaluateRisk() {
     final now = DateTime.now();
+    
+    // Check speed staleness (5 seconds)
+    double? speedForRisk = _currentSpeed;
+    if (_lastSpeedTimestamp == null || now.difference(_lastSpeedTimestamp!).inSeconds > 5) {
+      speedForRisk = null; // Stale or unavailable
+    }
+
     final isNight = _timeContextService.isNight(now);
 
-    // Simple heuristic to extract proximity from bounding boxes (larger box = closer)
-    double closestDist = 1.0; 
-    for (var d in _recentDetections) {
-      if (d.label == 'car' || d.label == 'truck' || d.label == 'bus') {
-        // approximate distance inverse based on bounding box area
-        double area = d.boundingBox.width * d.boundingBox.height;
-        // Assume max area is 1.0 (covers whole screen). 
-        // A box covering 50% of the screen is very close (e.g., 0.1 dist)
-        double estimatedDistance = 1.0 - area.clamp(0.0, 1.0);
+    double closestDist = 1.0;
+    int nearbyVehiclesCount = 0;
+    bool isClosingIn = false;
+    
+    for (var track in _currentTracks) {
+      if (track.type == RoadObjectType.roadVehicle) {
+        nearbyVehiclesCount++;
+        
+        if (track.closingRate == ClosingRate.closing) {
+          isClosingIn = true;
+        }
+
+        // Proximity categories mapped to the engine's 0-1 scale expectation (or update engine)
+        double estimatedDistance = 1.0;
+        switch (track.proximity) {
+          case ProximityCategory.veryNear: estimatedDistance = 0.1; break;
+          case ProximityCategory.near: estimatedDistance = 0.3; break;
+          case ProximityCategory.medium: estimatedDistance = 0.6; break;
+          case ProximityCategory.far: 
+          case ProximityCategory.unknown: 
+            estimatedDistance = 1.0; break;
+        }
+
         if (estimatedDistance < closestDist) {
           closestDist = estimatedDistance;
         }
@@ -78,13 +104,13 @@ class RiskManager extends ChangeNotifier {
     }
 
     final contextVector = ContextVector(
-      currentSpeed: _currentSpeed,
+      currentSpeed: speedForRisk,
       isRaining: _isRaining,
       isNight: isNight,
       visibility: _visibility,
-      nearbyVehicles: _recentDetections.length,
+      nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
-      isClosingIn: false, // Needs temporal tracking of objects across frames
+      isClosingIn: isClosingIn,
     );
 
     final newAssessment = _riskEngine.assessRisk(contextVector);
