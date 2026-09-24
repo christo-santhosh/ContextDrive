@@ -169,6 +169,8 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
   try {
     final options = InterpreterOptions()..threads = 4;
     interpreter = Interpreter.fromBuffer(initData.modelBytes, options: options);
+    // The model input shape signature is [1, -1, -1, 3]. We must resize it to 320x320 before allocating!
+    interpreter.resizeInputTensor(0, [1, 320, 320, 3]);
     interpreter.allocateTensors();
     
     labels = initData.labels;
@@ -279,14 +281,21 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
           }
         }
 
-        // Pre-allocate map based on known indices
+        // Pre-allocate map based on known indices.
+        // Important: This SSD model has dynamic output shapes before the first inference.
+        // We must hardcode the NMS output sizes (100 detections) so tflite_flutter has space to write.
         int outputTensorCount = interpreter.getOutputTensors().length;
         Map<int, Object> outputs = {};
         for (int i = 0; i < outputTensorCount; i++) {
-          outputs[i] = _createNestedList(interpreter.getOutputTensor(i).shape, 0);
+          if (i == boxesIdx) {
+            outputs[i] = List.generate(1, (_) => List.generate(100, (_) => List.filled(4, 0.0)));
+          } else if (i == classesIdx || i == scoresIdx) {
+            outputs[i] = List.generate(1, (_) => List.filled(100, 0.0));
+          } else {
+            outputs[i] = _createNestedList(interpreter.getOutputTensor(i).shape, 0);
+          }
         }
 
-        interpreter.getInputTensor(0).setTo(inputBuffer.buffer.asUint8List());
         interpreter.runForMultipleInputs([inputBuffer], outputs);
 
         var parsedScores = outputs[scoresIdx] as List<dynamic>;
@@ -301,14 +310,12 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
           if (score >= 0.25) {
             int classId = (parsedClasses[0][i] as double).toInt();
             
-            // Standard COCO 1-indexed IDs for road vehicles:
-            // Person: 1
-            // Car: 3, Motorcycle: 4, Bus: 6, Truck: 8
-            
+            // COCO classes (0-indexed without background):
+            // Person: 0, Bicycle: 1, Car: 2, Motorcycle: 3, Bus: 5, Truck: 7
             RoadObjectType type = RoadObjectType.ignored;
-            if (classId == 1) {
+            if (classId == 0 || classId == 1) {
               type = RoadObjectType.vulnerableRoadUser;
-            } else if (classId == 3 || classId == 4 || classId == 6 || classId == 8) {
+            } else if (classId == 2 || classId == 3 || classId == 5 || classId == 7) {
               type = RoadObjectType.roadVehicle;
             }
 
@@ -335,14 +342,15 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
               ));
             }
           }
-        }
+        } // Close for loop
 
         msg.replyPort.send(results);
-      } catch (e) {
+      } catch (e, st) {
+        debugPrint('TFLite Isolate Error: $e\n$st');
         msg.replyPort.send(<DetectedObject>[]);
-      }
-    }
-  }
+      } // Close try block
+    } // Close if msg is _IsolateRequest
+  } // Close await for loop
 }
 
 Object _createNestedList(List<int> shape, int depth) {
