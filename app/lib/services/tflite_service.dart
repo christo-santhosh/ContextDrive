@@ -13,7 +13,9 @@ import '../models/detected_object.dart';
 class _IsolateInitData {
   final SendPort sendPort;
   final RootIsolateToken token;
-  _IsolateInitData(this.sendPort, this.token);
+  final Uint8List modelBytes;
+  final List<String> labels;
+  _IsolateInitData(this.sendPort, this.token, this.modelBytes, this.labels);
 }
 
 class _IsolateInitResponse {
@@ -63,7 +65,14 @@ class TfliteService {
     final receivePort = ReceivePort();
     final token = RootIsolateToken.instance!;
     
-    await Isolate.spawn(_isolateEntryPoint, _IsolateInitData(receivePort.sendPort, token));
+    // Load assets on the main thread to avoid ServicesBinding isolate errors
+    final modelData = await rootBundle.load('assets/detect.tflite');
+    final modelBytes = modelData.buffer.asUint8List();
+    
+    final labelData = await rootBundle.loadString('assets/labelmap.txt');
+    final labels = labelData.split('\n');
+    
+    await Isolate.spawn(_isolateEntryPoint, _IsolateInitData(receivePort.sendPort, token, modelBytes, labels));
     
     try {
       final response = await receivePort.first.timeout(const Duration(seconds: 10)) as _IsolateInitResponse;
@@ -159,11 +168,10 @@ void _isolateEntryPoint(_IsolateInitData initData) async {
 
   try {
     final options = InterpreterOptions()..threads = 4;
-    interpreter = await Interpreter.fromAsset('assets/detect.tflite', options: options);
+    interpreter = Interpreter.fromBuffer(initData.modelBytes, options: options);
     interpreter.allocateTensors();
     
-    final labelData = await rootBundle.loadString('assets/labelmap.txt');
-    labels = labelData.split('\n');
+    labels = initData.labels;
     
     // Explicitly verified indices for this specific SSD model
     boxesIdx = 4;
