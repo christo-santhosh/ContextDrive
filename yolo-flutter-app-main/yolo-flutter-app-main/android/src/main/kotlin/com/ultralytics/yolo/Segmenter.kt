@@ -1,0 +1,559 @@
+// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+package com.ultralytics.yolo
+
+import android.content.Context
+import android.graphics.*
+import android.util.Log
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+class Segmenter(
+    context: Context,
+    modelPath: String,
+    override var labels: List<String>,
+    private val useGpu: Boolean = true,
+    private var numItemsThreshold: Int = 30
+) : BasePredictor() {
+
+    private val boxFeatureLength = 4  // (x, y, w, h)
+    private val maskConfidenceLength = 32
+    private var numClasses = 0
+    private var out0NumFeatures = 0
+    private var out0NumAnchors = 0
+    private var maskH = 0
+    private var maskW = 0
+    private var maskC = 0
+    private var protoNchw = false // litert-torch proto is NCHW [1,32,H,W]; legacy onnx2tf is NHWC [1,H,W,32]
+    private var isEndToEnd = false
+
+    // Reusable float input for the CompiledModel input buffer.
+    private lateinit var floatInput: FloatArray
+    private lateinit var inputBitmap: Bitmap
+    private lateinit var intValues: IntArray
+
+    // Reusable per-anchor class-argmax scratch (sized to the anchor count on first use).
+    private var classBestScore = FloatArray(0)
+    private var classBestIndex = IntArray(0)
+
+    // Reusable per-pixel accumulator for NCHW mask generation (sized to the proto plane on first use).
+    private var maskAccum = FloatArray(0)
+    private var combinedMaskPixels = IntArray(0)
+    private var scaledX0 = IntArray(0)
+    private var scaledX1 = IntArray(0)
+    private var scaledXWeight = FloatArray(0)
+
+    // CompiledModel output indices: detection head (rank-3) and mask proto (rank-4) may be returned in either order.
+    private var detOutIndex = 0
+    private var maskOutIndex = 1
+
+    init {
+        val loadedLabels = YOLOFileUtils.loadModelLabels(context, modelPath)
+        if (loadedLabels != null) {
+            this.labels = loadedLabels
+            Log.i("Segmenter", "Labels successfully loaded from appended ZIP.")
+        } else if (this.labels.isEmpty()) {
+            Log.w("Segmenter", "No embedded labels found and none provided; detections may lack class names.")
+        }
+
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "Segmenter")
+
+        val inDims = rtModel.inputDims
+        val inHeight = if (inDims.size >= 4) inDims[1] else 640
+        val inWidth = if (inDims.size >= 4) inDims[2] else 640
+        inputSize = com.ultralytics.yolo.Size(inWidth, inHeight)
+        modelInputSize = Pair(inWidth, inHeight)
+
+        // Segment has two outputs returned in arbitrary order: the detection head (rank 3) and the mask proto (rank 4).
+        val dims = rtModel.outputDims
+        detOutIndex = dims.indexOfFirst { it.size == 3 }.takeIf { it >= 0 } ?: 0
+        maskOutIndex = dims.indexOfFirst { it.size == 4 }.takeIf { it >= 0 } ?: 1
+        val out0Shape = dims.getOrNull(detOutIndex) ?: IntArray(0)
+        val out1Shape = dims.getOrNull(maskOutIndex) ?: IntArray(0)
+
+        // Detection head shape (traditional [1,116,8400] or end-to-end [1,300,38]); kept flat and indexed in place.
+        isEndToEnd = out0Shape[2] < out0Shape[1] && out0Shape[2] >= 6
+        if (isEndToEnd) {
+            out0NumAnchors = out0Shape[1]
+            out0NumFeatures = out0Shape[2]
+        } else {
+            out0NumFeatures = out0Shape[1]
+            out0NumAnchors = out0Shape[2]
+        }
+
+        // Mask proto: litert-torch exports are NCHW [1,32,H,W]; legacy onnx2tf are NHWC [1,H,W,32]. Detect from the
+        // channel position (mask-coeff count == maskConfidenceLength) and index accordingly in generateMasks().
+        protoNchw = out1Shape.size == 4 && out1Shape[1] == maskConfidenceLength
+        if (protoNchw) {
+            maskC = out1Shape[1]
+            maskH = out1Shape[2]
+            maskW = out1Shape[3]
+        } else {
+            maskH = out1Shape[1]
+            maskW = out1Shape[2]
+            maskC = out1Shape[3]
+        }
+
+        floatInput = FloatArray(inWidth * inHeight * 3)
+        inputBitmap = Bitmap.createBitmap(inWidth, inHeight, Bitmap.Config.ARGB_8888)
+        intValues = IntArray(inWidth * inHeight)
+    }
+
+    override fun setNumItemsThreshold(n: Int) {
+        numItemsThreshold = n
+        super.setNumItemsThreshold(n)
+    }
+
+    override fun predict(
+        bitmap: Bitmap,
+        origWidth: Int,
+        origHeight: Int,
+        rotateForCamera: Boolean,
+        isLandscape: Boolean
+    ): YOLOResult {
+        t0 = System.nanoTime()
+
+        ImageUtils.prepareBitmapForModel(
+            bitmap = bitmap,
+            targetBitmap = inputBitmap,
+            rotateForCamera = rotateForCamera,
+            isLandscape = isLandscape,
+            isFrontCamera = isFrontCamera,
+            rotationDegrees = cameraRotationDegrees
+        )
+        ImageUtils.copyRgbBitmapToFloatArray(
+            inputBitmap,
+            floatInput,
+            intValues,
+            channelsFirst = rtModel.inputUsesNchw
+        )
+
+        numClasses = out0NumFeatures - boxFeatureLength - maskConfidenceLength
+
+        val preEnd = System.nanoTime()
+        val outs = try {
+            rtModel.run(floatInput)
+        } catch (e: Exception) {
+            Log.e("Segmenter", "Inference error: ${e.message}")
+            val timing = finishTiming(preEnd, System.nanoTime())
+            return YOLOResult(
+                origShape = com.ultralytics.yolo.Size(origWidth, origHeight),
+                boxes = emptyList(),
+                speed = timing.speedMs,
+                fps = timing.fps,
+                preMs = timing.preMs,
+                inferenceMs = timing.inferenceMs,
+                postMs = timing.postMs,
+                names = labels
+            )
+        }
+
+        val inferEnd = System.nanoTime()
+        // Index the flat run() outputs directly — no per-frame reshape into jagged nested arrays.
+        val detFlat = outs[detOutIndex]
+        val maskFlat = outs[maskOutIndex]
+        // (4) Post-processing (box + mask)
+        val rawDetections = postProcessSegment(
+            detFlat = detFlat,
+            numAnchors = out0NumAnchors,
+            confidenceThreshold = CONFIDENCE_THRESHOLD,
+            iouThreshold = IOU_THRESHOLD
+        )
+
+        // Apply numItemsThreshold limit
+        val limitedDetections = rawDetections.take(numItemsThreshold)
+
+        val boxes = mutableListOf<Box>()
+        val maskDetections = mutableListOf<Detection>()
+        for (detection in limitedDetections) {
+            val (boxRect, cls, score, _) = detection
+            val rectF = inputRectFromOutputRect(boxRect, origWidth, origHeight) ?: continue
+            val normRect = normalizedRectFromInputRect(rectF, origWidth, origHeight)
+            boxes.add(Box(cls, labelName(cls), score, rectF, normRect))
+            maskDetections.add(detection)
+        }
+
+        val (combinedMask, probMasks) = generateCombinedMaskImage(
+            detections = maskDetections,
+            protoFlat = maskFlat,
+            maskW = maskW,
+            maskH = maskH,
+            origWidth = origWidth,
+            origHeight = origHeight,
+            returnIndividualMasks = includeRawMaskData
+        )
+        val masks = Masks(probMasks ?: emptyList(), combinedMask)
+        val timing = finishTiming(preEnd, inferEnd)
+        return YOLOResult(
+            origShape = com.ultralytics.yolo.Size(origWidth, origHeight),
+            boxes = boxes,
+            masks = masks,
+            speed = timing.speedMs,
+            fps = timing.fps,
+            preMs = timing.preMs,
+            inferenceMs = timing.inferenceMs,
+            postMs = timing.postMs,
+            names = labels
+        )
+    }
+
+    private fun postProcessSegment(
+        detFlat: FloatArray,
+        numAnchors: Int,
+        confidenceThreshold: Float,
+        iouThreshold: Float
+    ): List<Detection> {
+        if (isEndToEnd) {
+            return postProcessEndToEndSegment(detFlat, confidenceThreshold)
+        }
+
+        // The detection head is flat in feature-major order: feature[f][anchor] == detFlat[f * numAnchors + anchor].
+        val classBase = 4 * numAnchors
+
+        // Class argmax in class-major order: read each class plane (numAnchors contiguous floats) sequentially into
+        // a per-anchor running best, instead of a per-anchor scan that strides ~33 KB across the class dimension and
+        // misses cache on every step. Identical result, far friendlier memory access. The scratch buffers are reused
+        // across frames and cleared each frame — bestClass to 0 so an anchor whose class scores are all 0 still yields
+        // class 0 when it survives a zero confidence threshold, matching the pre-optimization default.
+        if (classBestScore.size < numAnchors) {
+            classBestScore = FloatArray(numAnchors)
+            classBestIndex = IntArray(numAnchors)
+        }
+        val bestScore = classBestScore
+        val bestClass = classBestIndex
+        java.util.Arrays.fill(bestScore, 0, numAnchors, 0f)
+        java.util.Arrays.fill(bestClass, 0, numAnchors, 0)
+        for (c in 0 until numClasses) {
+            val planeBase = classBase + c * numAnchors
+            for (j in 0 until numAnchors) {
+                val score = detFlat[planeBase + j]
+                if (score > bestScore[j]) {
+                    bestScore[j] = score
+                    bestClass[j] = c
+                }
+            }
+        }
+
+        // Collect candidates above threshold; box + mask coeffs are read only for the few survivors.
+        val detectionsByClass = arrayOfNulls<ArrayList<Detection>>(numClasses)
+        val maskBase = (4 + numClasses) * numAnchors
+        for (j in 0 until numAnchors) {
+            val maxScore = bestScore[j]
+            if (maxScore < confidenceThreshold) continue
+            val cx = detFlat[j]
+            val cy = detFlat[numAnchors + j]
+            val w = detFlat[2 * numAnchors + j]
+            val h = detFlat[3 * numAnchors + j]
+            val maskCoeffs = FloatArray(maskConfidenceLength)
+            for (m in 0 until maskConfidenceLength) {
+                maskCoeffs[m] = detFlat[maskBase + m * numAnchors + j]
+            }
+            val detection = Detection(
+                RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f),
+                bestClass[j],
+                maxScore,
+                maskCoeffs
+            )
+            val classDetections = detectionsByClass[detection.cls] ?: ArrayList<Detection>().also {
+                detectionsByClass[detection.cls] = it
+            }
+            classDetections.add(detection)
+        }
+        val finalDetections = mutableListOf<Detection>()
+        for (sameClassUnsorted in detectionsByClass) {
+            if (sameClassUnsorted == null) continue
+            val sameClass = sameClassUnsorted.sortedByDescending { it.score }
+            val picked = mutableListOf<Detection>()
+            val used = BooleanArray(sameClass.size)
+            for (i in sameClass.indices) {
+                if (used[i]) continue
+                val a = sameClass[i]
+                picked.add(a)
+                for (j in i + 1 until sameClass.size) {
+                    if (used[j]) continue
+                    val b = sameClass[j]
+                    if (iou(a.box, b.box) > iouThreshold) {
+                        used[j] = true
+                    }
+                }
+            }
+            finalDetections.addAll(picked)
+        }
+        return finalDetections
+    }
+
+    private fun postProcessEndToEndSegment(
+        detFlat: FloatArray,
+        confidenceThreshold: Float
+    ): List<Detection> {
+        val detections = mutableListOf<Detection>()
+        // End-to-end head is anchor-major: feature[anchor][field] == detFlat[anchor * out0NumFeatures + field].
+        val fieldCount = out0NumFeatures
+        val maskStart = if (fieldCount > 5) 6 else 5
+
+        for (j in 0 until out0NumAnchors) {
+            val o = j * out0NumFeatures
+            val confidence = detFlat[o + 4]
+            if (confidence < confidenceThreshold) continue
+
+            val maskCoeffs = FloatArray(maskConfidenceLength)
+            for (m in 0 until min(maskConfidenceLength, fieldCount - maskStart)) {
+                maskCoeffs[m] = detFlat[o + maskStart + m]
+            }
+            detections.add(
+                Detection(
+                    RectF(detFlat[o], detFlat[o + 1], detFlat[o + 2], detFlat[o + 3]),
+                    if (fieldCount > 5) detFlat[o + 5].toInt() else 0,
+                    confidence,
+                    maskCoeffs
+                )
+            )
+        }
+        return detections
+    }
+
+    private fun iou(a: RectF, b: RectF): Float {
+        val interLeft = max(a.left, b.left)
+        val interTop = max(a.top, b.top)
+        val interRight = min(a.right, b.right)
+        val interBottom = min(a.bottom, b.bottom)
+        val interW = max(0f, interRight - interLeft)
+        val interH = max(0f, interBottom - interTop)
+        val interArea = interW * interH
+        val unionArea = a.width() * a.height() + b.width() * b.height() - interArea
+        return if (unionArea <= 0f) 0f else interArea / unionArea
+    }
+
+    private fun generateCombinedMaskImage(
+        detections: List<Detection>,
+        protoFlat: FloatArray,
+        maskW: Int,
+        maskH: Int,
+        origWidth: Int,
+        origHeight: Int,
+        threshold: Float = 0.0f,
+        returnIndividualMasks: Boolean = false
+    ): Pair<Bitmap?, List<List<List<Float>>>?> {
+        if (detections.isEmpty()) return Pair(null, null)
+        if (maskW <= 0 || maskH <= 0 || maskC <= 0) return Pair(null, null)
+        val contentRect = modelMaskCropRect(maskW, maskH, origWidth, origHeight)
+            ?: Rect(0, 0, maskW, maskH)
+        val targetWidth = max(1, (contentRect.width().toFloat() / maskW * modelInputSize.first).roundToInt())
+        val targetHeight = max(1, (contentRect.height().toFloat() / maskH * modelInputSize.second).roundToInt())
+        val displayScaleX = targetWidth.toFloat() / contentRect.width()
+        val displayScaleY = targetHeight.toFloat() / contentRect.height()
+        val pixelCount = targetWidth * targetHeight
+        if (combinedMaskPixels.size < pixelCount) combinedMaskPixels = IntArray(pixelCount)
+        val combinedPixels = combinedMaskPixels
+        java.util.Arrays.fill(combinedPixels, 0, pixelCount, Color.TRANSPARENT)
+        val probabilityMasks = if (returnIndividualMasks) mutableListOf<List<List<Float>>>() else null
+        val coeffCount = min(maskConfidenceLength, maskC)
+        detections.forEach { det ->
+            val color = ultralyticsColors[det.cls % ultralyticsColors.size]
+            val instanceMask = if (returnIndividualMasks) {
+                Array(contentRect.height()) { FloatArray(contentRect.width()) }
+            } else {
+                null
+            }
+            val maskBox = maskBoxForDetection(det.box, maskW, maskH)
+            val outputBox =
+                if (maskBox.left < maskBox.right && maskBox.top < maskBox.bottom) {
+                    Rect(
+                        max(maskBox.left, contentRect.left),
+                        max(maskBox.top, contentRect.top),
+                        min(maskBox.right, contentRect.right),
+                        min(maskBox.bottom, contentRect.bottom)
+                    )
+                } else {
+                    null
+                }
+            if (
+                outputBox == null ||
+                outputBox.left >= outputBox.right ||
+                outputBox.top >= outputBox.bottom
+            ) {
+                instanceMask?.let { mask ->
+                    probabilityMasks?.add(mask.map { it.toList() })
+                }
+                return@forEach
+            }
+            // proto flat layout: NHWC -> protoFlat[(y*maskW + x)*maskC + c]; NCHW -> protoFlat[c*planeSize + y*maskW + x].
+            val planeSize = maskH * maskW
+            val targetLeft = max(0, floor((outputBox.left - contentRect.left) * displayScaleX).toInt())
+            val targetTop = max(0, floor((outputBox.top - contentRect.top) * displayScaleY).toInt())
+            val targetRight = min(targetWidth, ceil((outputBox.right - contentRect.left) * displayScaleX).toInt())
+            val targetBottom = min(targetHeight, ceil((outputBox.bottom - contentRect.top) * displayScaleY).toInt())
+            if (targetLeft >= targetRight || targetTop >= targetBottom) {
+                instanceMask?.let { mask ->
+                    probabilityMasks?.add(mask.map { it.toList() })
+                }
+                return@forEach
+            }
+            if (protoNchw) {
+                // Plane-major accumulation for the NCHW proto: stream each coeff's proto plane over the box into a
+                // per-pixel accumulator (cache-friendly), instead of gathering coeffCount planeSize-strided reads per
+                // pixel. The per-pixel add order over c is unchanged, so the accumulated value is identical to the
+                // per-pixel dot product. The accumulator is cleared over this box first; detections are independent.
+                if (maskAccum.size < planeSize) maskAccum = FloatArray(planeSize)
+                val acc = maskAccum
+                for (y in outputBox.top until outputBox.bottom) {
+                    val rowBase = y * maskW
+                    java.util.Arrays.fill(acc, rowBase + outputBox.left, rowBase + outputBox.right, 0f)
+                }
+                for (c in 0 until coeffCount) {
+                    val coeff = det.maskCoeffs[c]
+                    val planeBase = c * planeSize
+                    for (y in outputBox.top until outputBox.bottom) {
+                        val rowBase = y * maskW
+                        val protoRow = planeBase + rowBase
+                        for (x in outputBox.left until outputBox.right) {
+                            acc[rowBase + x] += coeff * protoFlat[protoRow + x]
+                        }
+                    }
+                }
+                if (instanceMask != null) {
+                    for (y in outputBox.top until outputBox.bottom) {
+                        val rowBase = y * maskW
+                        for (x in outputBox.left until outputBox.right) {
+                            val v = acc[rowBase + x]
+                            if (v > threshold) {
+                                instanceMask.get(y - contentRect.top)?.set(x - contentRect.left, v)
+                            }
+                        }
+                    }
+                }
+                paintScaledMask(
+                    logits = acc,
+                    sourceWidth = maskW,
+                    sourceBox = outputBox,
+                    contentRect = contentRect,
+                    targetLeft = targetLeft,
+                    targetTop = targetTop,
+                    targetRight = targetRight,
+                    targetBottom = targetBottom,
+                    scaleX = displayScaleX,
+                    scaleY = displayScaleY,
+                    threshold = threshold,
+                    color = color,
+                    pixels = combinedPixels,
+                    targetWidth = targetWidth
+                )
+            } else {
+                // NHWC proto: classes are contiguous per pixel, so the per-pixel dot product already streams cache lines.
+                if (maskAccum.size < planeSize) maskAccum = FloatArray(planeSize)
+                val acc = maskAccum
+                for (y in outputBox.top until outputBox.bottom) {
+                    val rowBase = y * maskW
+                    for (x in outputBox.left until outputBox.right) {
+                        val pix = rowBase + x
+                        val base = pix * maskC
+                        var v = 0f
+                        for (c in 0 until coeffCount) {
+                            v += det.maskCoeffs[c] * protoFlat[base + c]
+                        }
+                        acc[pix] = v
+                        if (v > threshold) {
+                            instanceMask?.get(y - contentRect.top)?.set(x - contentRect.left, v)
+                        }
+                    }
+                }
+                paintScaledMask(
+                    logits = acc,
+                    sourceWidth = maskW,
+                    sourceBox = outputBox,
+                    contentRect = contentRect,
+                    targetLeft = targetLeft,
+                    targetTop = targetTop,
+                    targetRight = targetRight,
+                    targetBottom = targetBottom,
+                    scaleX = displayScaleX,
+                    scaleY = displayScaleY,
+                    threshold = threshold,
+                    color = color,
+                    pixels = combinedPixels,
+                    targetWidth = targetWidth
+                )
+            }
+            instanceMask?.let { mask ->
+                probabilityMasks?.add(mask.map { it.toList() })
+            }
+        }
+        val bmp = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(combinedPixels, 0, targetWidth, 0, 0, targetWidth, targetHeight)
+        return Pair(bmp, probabilityMasks)
+    }
+
+    private fun paintScaledMask(
+        logits: FloatArray,
+        sourceWidth: Int,
+        sourceBox: Rect,
+        contentRect: Rect,
+        targetLeft: Int,
+        targetTop: Int,
+        targetRight: Int,
+        targetBottom: Int,
+        scaleX: Float,
+        scaleY: Float,
+        threshold: Float,
+        color: Int,
+        pixels: IntArray,
+        targetWidth: Int
+    ) {
+        val columnCount = targetRight - targetLeft
+        if (scaledX0.size < columnCount) {
+            scaledX0 = IntArray(columnCount)
+            scaledX1 = IntArray(columnCount)
+            scaledXWeight = FloatArray(columnCount)
+        }
+        for (i in 0 until columnCount) {
+            val sourceX = contentRect.left + (targetLeft + i + 0.5f) / scaleX - 0.5f
+            val x0 = floor(sourceX).toInt().coerceIn(sourceBox.left, sourceBox.right - 1)
+            scaledX0[i] = x0
+            scaledX1[i] = min(x0 + 1, sourceBox.right - 1)
+            scaledXWeight[i] = (sourceX - x0).coerceIn(0f, 1f)
+        }
+
+        for (ty in targetTop until targetBottom) {
+            val sourceY = contentRect.top + (ty + 0.5f) / scaleY - 0.5f
+            val y0 = floor(sourceY).toInt().coerceIn(sourceBox.top, sourceBox.bottom - 1)
+            val y1 = min(y0 + 1, sourceBox.bottom - 1)
+            val yWeight = (sourceY - y0).coerceIn(0f, 1f)
+            val row0 = y0 * sourceWidth
+            val row1 = y1 * sourceWidth
+            var pixelIndex = ty * targetWidth + targetLeft
+            for (i in 0 until columnCount) {
+                val x0 = scaledX0[i]
+                val x1 = scaledX1[i]
+                val xWeight = scaledXWeight[i]
+                val top = logits[row0 + x0] * (1f - xWeight) + logits[row0 + x1] * xWeight
+                val bottom = logits[row1 + x0] * (1f - xWeight) + logits[row1 + x1] * xWeight
+                if (top * (1f - yWeight) + bottom * yWeight > threshold) {
+                    pixels[pixelIndex] = color
+                }
+                pixelIndex++
+            }
+        }
+    }
+
+    private fun maskBoxForDetection(outputBox: RectF, maskW: Int, maskH: Int): Rect {
+        val modelBox = modelRectFromOutputRect(outputBox, outputCoordinatesAreNormalized(outputBox))
+        val scaleX = maskW.toFloat() / modelInputSize.first
+        val scaleY = maskH.toFloat() / modelInputSize.second
+        val left = (modelBox.left * scaleX).roundToInt().coerceIn(0, maskW)
+        val top = (modelBox.top * scaleY).roundToInt().coerceIn(0, maskH)
+        val right = (modelBox.right * scaleX).roundToInt().coerceIn(0, maskW)
+        val bottom = (modelBox.bottom * scaleY).roundToInt().coerceIn(0, maskH)
+        return Rect(left, top, right, bottom)
+    }
+
+    data class Detection(
+        val box: RectF,
+        val cls: Int,
+        val score: Float,
+        val maskCoeffs: FloatArray
+    )
+
+}

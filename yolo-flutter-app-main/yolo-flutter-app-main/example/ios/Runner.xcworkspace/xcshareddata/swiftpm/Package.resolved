@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "yolo-ios-app",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ultralytics/yolo-ios-app.git",
+      "state" : {
+        "revision" : "efa95643ebf28f49b712700eb712b217f7e80f2d",
+        "version" : "8.9.15"
+      }
+    }
+  ],
+  "version" : 2
+}

@@ -39,13 +39,13 @@ dependencies:
   http: ^1.6.0
   provider: ^6.1.5+1
   # ML
-  tflite_flutter: ^0.12.1
   permission_handler: ^13.0.1
   path_provider: ^2.1.6
   image: ^4.10.1
   image_picker: ^1.1.2
   sunrise_sunset_calc: ^3.0.0
-
+  ultralytics_yolo:
+    path: c:/Users/chris/Documents/projects/ContextDrive/yolo-flutter-app-main/yolo-flutter-app-main
 dev_dependencies:
   flutter_test:
     sdk: flutter

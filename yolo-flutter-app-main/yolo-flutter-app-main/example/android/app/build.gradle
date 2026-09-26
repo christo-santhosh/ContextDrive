@@ -1,0 +1,99 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+def hasReleaseSigning = keystoreProperties["storeFile"] &&
+    (keystoreProperties["keyAlias"] ?: System.getenv("ANDROID_KEY_ALIAS")) &&
+    (keystoreProperties["keyPassword"] ?: System.getenv("ANDROID_KEY_PASSWORD")) &&
+    (keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD"))
+
+// Snapdragon NPU (QNN) runtime is optional and OFF by default — it adds ~230 MB of uncompressed arm64 native libs.
+// Opt in for on-device NPU testing with the ENABLE_QNN env var (reliable through the `flutter` CLI) or a -Pqnn
+// Gradle property, e.g.:  ENABLE_QNN=1 flutter build appbundle --release
+def qnnEnabled = project.hasProperty("qnn") || (System.getenv("ENABLE_QNN") in ["1", "true", "TRUE", "yes"])
+
+android {
+    namespace = "com.ultralytics.yolo"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.ultralytics.yolo"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        release {
+            keyAlias = keystoreProperties["keyAlias"] ?: System.getenv("ANDROID_KEY_ALIAS")
+            keyPassword = keystoreProperties["keyPassword"] ?: System.getenv("ANDROID_KEY_PASSWORD")
+            storeFile = keystoreProperties["storeFile"] ? rootProject.file(keystoreProperties["storeFile"]) : null
+            storePassword = keystoreProperties["storePassword"] ?: System.getenv("ANDROID_STORE_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+
+    // When QNN is enabled the Hexagon DSP loads its Skel libraries via filesystem paths (ADSP_LIBRARY_PATH), so they
+    // must be real files in nativeLibraryDir rather than mmapped out of the APK. Only needed for the QNN runtime, so
+    // it is off by default — the standard release then packs native libs compressed.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = qnnEnabled
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    // Snapdragon NPU support for QNN context-binary ONNX models (*_qnn.onnx). The plugin declares this compileOnly,
+    // and the runtime adds ~230 MB of uncompressed arm64 native libs, so it is OFF BY DEFAULT to keep the release
+    // AAB lean — QNN acceleration is optional. Opt in (see `qnnEnabled` above) for on-device NPU testing, e.g.:
+    //   ENABLE_QNN=1 flutter build appbundle --release
+    if (qnnEnabled) {
+        implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.26.0")
+        // Override the AAR's transitive QAIRT 2.42 with 2.46: 2.42's device table predates the
+        // Snapdragon 8 Elite Gen 5 (SM8850), failing QnnDevice_create with INVALID_CONFIG.
+        implementation("com.qualcomm.qti:qnn-runtime:2.46.0")
+    }
+}
+
+// Bundle the nano YOLO models into the app at build time. They are NOT committed to git (large binaries, gitignored);
+// this fetches them into example/assets/models/ before assets are merged so the app ships with them by default. The
+// resolver checks assets/models/ before downloading, so a bundled model means no first-run network fetch. Best-effort:
+// the script always exits 0, so an offline build still succeeds and simply falls back to the runtime download.
+tasks.register("fetchBundledModels", Exec) {
+    workingDir = rootProject.projectDir
+    commandLine "bash", "${rootProject.projectDir}/../../scripts/fetch_bundled_models.sh", "android"
+    ignoreExitValue = true
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("fetchBundledModels") }

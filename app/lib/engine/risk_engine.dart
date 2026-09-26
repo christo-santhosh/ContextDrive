@@ -18,14 +18,14 @@ class RiskEngine {
     bool isVeryNear = context.closestVehicleDistance <= 0.1;
     bool isNear = context.closestVehicleDistance <= 0.3 && !isVeryNear;
 
-    if (isVeryNear && context.isClosingIn && highSpeed) {
+    if (isVeryNear && context.isClosingIn) {
       level = RiskLevel.high;
-      how = "Risk increased because your speed is high and a vehicle is very close ahead.";
+      how = "Risk increased because a vehicle is very close ahead and closing in.";
       why = "You are closing in rapidly and have minimal time to react.";
       recommendation = "Brake immediately to increase following distance.";
-    } else if (isNear && veryHighSpeed) {
+    } else if ((isNear && context.isClosingIn) || (isVeryNear)) {
       level = RiskLevel.moderate;
-      how = "Very high speed combined with a close vehicle ahead.";
+      how = "A vehicle is near and closing in, or very near.";
       why = "You have less time to react if the vehicle in front brakes abruptly.";
       recommendation = "Reduce speed and increase following distance.";
     } else if (veryHighSpeed && poorVisibility) {
