@@ -25,6 +25,19 @@ class RiskManager extends ChangeNotifier {
   );
 
   RiskAssessment get currentAssessment => _currentAssessment;
+  
+  ContextVector _lastContextVector = ContextVector(
+      currentSpeed: null,
+      isRaining: false,
+      isNight: false,
+      visibility: 10000,
+      isWeatherAvailable: false,
+      nearbyVehicles: 0,
+      closestVehicleDistance: 1.0,
+      isClosingIn: false,
+  );
+  
+  ContextVector get contextVector => _lastContextVector;
 
   double? _currentSpeed;
   DateTime? _lastSpeedTimestamp;
@@ -118,7 +131,7 @@ class RiskManager extends ChangeNotifier {
       weatherAvailable = false;
     }
 
-    final contextVector = ContextVector(
+    _lastContextVector = ContextVector(
       currentSpeed: speedForRisk,
       isRaining: _isRaining,
       isNight: isNight,
@@ -129,7 +142,7 @@ class RiskManager extends ChangeNotifier {
       isClosingIn: isClosingIn,
     );
 
-    final newAssessment = _riskEngine.assessRisk(contextVector);
+    final newAssessment = _riskEngine.assessRisk(_lastContextVector);
     
     // Hysteresis & Cooldown Logic based on timestamps
     if (newAssessment.level == RiskLevel.high || newAssessment.level == RiskLevel.moderate) {
