@@ -267,13 +267,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
         final speed = riskManager.contextVector.currentSpeed;
+        final speedLimit = riskManager.contextVector.currentSpeedLimit;
         return Container(
           decoration: BoxDecoration(
             color: const Color(0xFF161618),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.white10),
           ),
-          child: FittedBox(
+          child: Stack(
+            children: [
+              Center(
+                child: FittedBox(
             fit: BoxFit.scaleDown,
             child: Padding(
               padding: const EdgeInsets.all(12.0),
@@ -299,8 +303,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
             ],
+                    ),
+                  ),
+                ),
               ),
-            ),
+              if (speedLimit != null)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    width: isLandscape ? 36 : 48,
+                    height: isLandscape ? 36 : 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.red, width: isLandscape ? 3 : 4),
+                    ),
+                    child: Center(
+                      child: Text(
+                        "$speedLimit",
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                          fontSize: isLandscape ? 14 : 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },

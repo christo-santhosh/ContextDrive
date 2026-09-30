@@ -18,11 +18,24 @@ class RiskEngine {
     bool isVeryNear = context.closestVehicleDistance <= 0.1;
     bool isNear = context.closestVehicleDistance <= 0.3 && !isVeryNear;
 
-    if (isVeryNear && context.isClosingIn) {
+    bool isSpeeding = hasSpeed && context.currentSpeedLimit != null && 
+                      context.currentSpeed! > (context.currentSpeedLimit! + 10);
+
+    if (context.isErraticDriving && context.nearbyVehicles > 0) {
+      level = RiskLevel.high;
+      how = "Harsh braking or swerving detected near other vehicles.";
+      why = "Erratic movements drastically increase the chance of a collision.";
+      recommendation = "STABILIZE VEHICLE IMMEDIATELY.";
+    } else if (isVeryNear && context.isClosingIn) {
       level = RiskLevel.high;
       how = "Risk increased because a vehicle is very close ahead and closing in.";
       why = "You are closing in rapidly and have minimal time to react.";
       recommendation = "Brake immediately to increase following distance.";
+    } else if (context.isErraticDriving) {
+      level = RiskLevel.moderate;
+      how = "Harsh braking or aggressive swerving detected.";
+      why = "Sudden movements reduce vehicle stability.";
+      recommendation = "Drive smoothly. Avoid sudden maneuvers.";
     } else if ((isNear && context.isClosingIn) || (isVeryNear)) {
       level = RiskLevel.moderate;
       how = "A vehicle is near and closing in, or very near.";
@@ -33,6 +46,11 @@ class RiskEngine {
       how = "Very high speed in poor visibility conditions.";
       why = "You cannot see far enough ahead to stop safely at this speed.";
       recommendation = "Reduce speed to match visibility conditions.";
+    } else if (isSpeeding) {
+      level = RiskLevel.moderate;
+      how = "Speed limit exceeded by >10 km/h.";
+      why = "You are traveling faster than the legal or safe limit for this road.";
+      recommendation = "Reduce your speed to ${context.currentSpeedLimit} km/h.";
     } else if (!hasSpeed) {
       level = RiskLevel.limited;
       how = "Sensor data limited.";

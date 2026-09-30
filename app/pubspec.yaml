@@ -46,6 +46,7 @@ dependencies:
   sunrise_sunset_calc: ^3.0.0
   ultralytics_yolo:
     path: c:/Users/chris/Documents/projects/ContextDrive/yolo-flutter-app-main/yolo-flutter-app-main
+  sensors_plus: ^7.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

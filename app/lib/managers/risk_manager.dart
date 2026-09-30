@@ -7,6 +7,8 @@ import '../models/detected_object.dart';
 import '../services/gps_service.dart';
 import '../services/weather_service.dart';
 import '../services/time_context_service.dart';
+import '../services/imu_service.dart';
+import '../services/speed_limit_service.dart';
 import '../models/tracked_object.dart';
 import 'object_tracker.dart';
 
@@ -14,6 +16,8 @@ class RiskManager extends ChangeNotifier {
   final GpsService _gpsService;
   final WeatherService _weatherService;
   final TimeContextService _timeContextService;
+  final ImuService _imuService = ImuService();
+  final SpeedLimitService _speedLimitService = SpeedLimitService();
   final RiskEngine _riskEngine = RiskEngine();
   final ObjectTracker _tracker = ObjectTracker();
 
@@ -28,6 +32,7 @@ class RiskManager extends ChangeNotifier {
   
   ContextVector _lastContextVector = ContextVector(
       currentSpeed: null,
+      currentSpeedLimit: null,
       isRaining: false,
       isNight: false,
       visibility: 10000,
@@ -35,6 +40,7 @@ class RiskManager extends ChangeNotifier {
       nearbyVehicles: 0,
       closestVehicleDistance: 1.0,
       isClosingIn: false,
+      isErraticDriving: false,
   );
   
   ContextVector get contextVector => _lastContextVector;
@@ -62,12 +68,15 @@ class RiskManager extends ChangeNotifier {
     if (_isStarted) return;
     _isStarted = true;
 
+    _imuService.start();
+
     if (locationAvailable) {
       _positionSubscription = _gpsService.getPositionStream().listen((pos) {
         _currentSpeed = _gpsService.getSpeedKmh(pos);
         _lastSpeedTimestamp = DateTime.now();
 
         _timeContextService.updateLocation(pos.latitude, pos.longitude);
+        _speedLimitService.updateSpeedLimit(pos.latitude, pos.longitude);
 
         _weatherService.getWeather(pos.latitude, pos.longitude).then((weather) {
           _isRaining = weather.isRaining;
@@ -133,6 +142,7 @@ class RiskManager extends ChangeNotifier {
 
     _lastContextVector = ContextVector(
       currentSpeed: speedForRisk,
+      currentSpeedLimit: _speedLimitService.currentSpeedLimit,
       isRaining: _isRaining,
       isNight: isNight,
       visibility: _visibility,
@@ -140,6 +150,7 @@ class RiskManager extends ChangeNotifier {
       nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
       isClosingIn: isClosingIn,
+      isErraticDriving: _imuService.isErratic,
     );
 
     final newAssessment = _riskEngine.assessRisk(_lastContextVector);
@@ -187,6 +198,7 @@ class RiskManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _imuService.stop();
     _positionSubscription?.cancel();
     _evaluationTimer?.cancel();
     super.dispose();
