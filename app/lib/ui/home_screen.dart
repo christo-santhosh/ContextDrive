@@ -257,11 +257,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               text: timeStr,
               isLandscape: isLandscape,
             ),
-            _buildGlassPill(
-              icon: Icons.visibility,
-              text: "${(ctx.visibility / 1000).toStringAsFixed(0)}km",
-              isLandscape: isLandscape,
-            ),
           ],
         );
       },
