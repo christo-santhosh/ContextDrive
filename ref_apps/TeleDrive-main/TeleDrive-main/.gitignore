@@ -1,0 +1,90 @@
+﻿# ─── OS FILES ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── EDITORS / IDEs ──────────────────────────────────────────
+.idea/
+.vscode/
+.settings/
+*.iml
+
+# ─── ANDROID / GRADLE ────────────────────────────────────────
+**/build/
+**/.gradle/
+local.properties
+android-app/captures/
+android-app/.externalNativeBuild/
+android-app/.cxx/
+
+# ─── APK / AAB OUTPUTS ───────────────────────────────────────
+*.apk
+*.aab
+*.ap_
+android-app/app/release/
+
+# ─── ANDROID SIGNING ─────────────────────────────────────────
+*.jks
+*.keystore
+*.pem
+*.p12
+
+# ─── PYTHON ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ─── VIRTUAL ENVIRONMENTS ────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── PACKAGING ───────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ─── JUPYTER ─────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ─── ML MODELS (large binary files) ─────────────────────────
+ml-pipeline/models/experiments/
+ml-pipeline/models/**/*.h5
+ml-pipeline/models/**/*.keras
+ml-pipeline/models/**/checkpoint*
+ml-pipeline/models/**/events.out.tfevents*
+
+# ─── ML DATA (large datasets) ────────────────────────────────
+ml-pipeline/data/
+*.csv
+*.npy
+*.npz
+*.pkl
+
+# ─── LOGS ────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── TEMP / BACKUP FILES ─────────────────────────────────────
+*.tmp
+*~
+~$*
+
+# ─── LOCAL ARCHIVE (cleanup folder — local only) ─────────────
+_archive_cleanup/
+
+# ─── KOTLIN BUILD CACHE ──────────────────────────────────────
+.kotlin/
