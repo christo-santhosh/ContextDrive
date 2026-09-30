@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -29,8 +28,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _yoloController.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _yoloController.resume();
+    }
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _yoloController.dispose();
     super.dispose();
   }
 
@@ -41,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool hasPermission = await _requestPermissions(appState);
     if (!hasPermission) return;
 
-    appState.setState(AppState.ready);
+    appState.setState(AppState.initializingModel);
   }
 
   Future<bool> _requestPermissions(AppStateModel appState) async {
@@ -74,7 +84,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     switch (state.currentState) {
       case AppState.starting:
       case AppState.requestingPermissions:
-      case AppState.initializingModel:
       case AppState.initializingCamera:
         return const Center(child: CircularProgressIndicator());
       case AppState.cameraUnavailable:
@@ -95,6 +104,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               )
             ],
           ),
+        );
+      case AppState.initializingModel:
+        return Stack(
+          children: [
+            Offstage(
+              offstage: true,
+              child: _buildDashboard(context),
+            ),
+            Container(
+              color: const Color(0xFF0A0A0A),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.blueAccent),
+                    SizedBox(height: 24),
+                    Text(
+                      "Preparing camera & model...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         );
       case AppState.ready:
         return _buildDashboard(context);
@@ -187,6 +225,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: YOLOView(
         modelPath: 'yolo26n',
         controller: _yoloController,
+        onModelLoad: (path, task) {
+          if (mounted) {
+             // Model is successfully loaded and running
+             context.read<AppStateModel>().setState(AppState.ready);
+          }
+        },
+        onModelError: (error, path, task) {
+          if (mounted) {
+             context.read<AppStateModel>().setState(AppState.modelFailed, error: "Failed to load model: $error");
+          }
+        },
         onResult: (results) {
           if (!mounted) return;
           List<DetectedObject> mappedDetections = [];
@@ -296,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Text(
                 "KM/H",
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                   fontSize: isLandscape ? 14 : 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 2,
@@ -431,12 +480,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Container(
           padding: EdgeInsets.symmetric(vertical: isLandscape ? 12 : 16, horizontal: isLandscape ? 12 : 16),
           decoration: BoxDecoration(
-            color: riskColor.withOpacity(0.85),
+            color: riskColor.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white30, width: 1),
             boxShadow: [
               if (assessment.level == RiskLevel.high)
-                BoxShadow(color: riskColor.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)
+                BoxShadow(color: riskColor.withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 2)
             ]
           ),
           child: Column(

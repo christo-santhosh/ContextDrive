@@ -16,6 +16,7 @@ void main() {
     // High risk test
     final highRiskContext = ContextVector(
       currentSpeed: 90.0,
+      currentSpeedLimit: 80,
       isRaining: true,
       isNight: true,
       visibility: 500,
@@ -31,6 +32,7 @@ void main() {
     // Low risk test
     final lowRiskContext = ContextVector(
       currentSpeed: 40.0,
+      currentSpeedLimit: 60,
       isRaining: false,
       isNight: false,
       visibility: 10000,

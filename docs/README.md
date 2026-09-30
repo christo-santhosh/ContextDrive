@@ -15,14 +15,9 @@ ContextDrive is a mobile driver-assistance prototype utilizing real-time compute
 - **Network/Internet:** Required to fetch live weather context.
 
 ## ML Model Details
-- **Model:** SSD MobileNet V2 (COCO trained)
-- **Input:** 320x320 RGB `uint8`
-- **Output:** 
-  - `detection_boxes`: [1, 100, 4] (normalized [ymin, xmin, ymax, xmax])
-  - `detection_classes`: [1, 100] (1-indexed COCO classes)
-  - `detection_scores`: [1, 100] (confidence 0.0 - 1.0)
-  - `num_detections`: [1] (number of valid detections)
-- **Labels:** 90 COCO classes (1-indexed). The system filters for road vehicles (car, truck, bus, motorcycle).
+- **Model:** Ultralytics YOLOv8 (yolo26n via ultralytics_yolo 0.6.15)
+- **Input:** 640x640 RGB (variable based on YOLO export)
+- **Labels:** 80 COCO classes. The system filters for vulnerable road users (person, bicycle) and road vehicles (car, truck, bus, motorcycle).
 
 ## How to Run
 
@@ -35,20 +30,6 @@ ContextDrive is a mobile driver-assistance prototype utilizing real-time compute
    flutter run
    ```
 
-To run the offline Python prototype on an MP4 video file (place a `sample.mp4` in the `ml/` directory):
-```bash
-cd ml
-pip install -r requirements.txt
-python process_video.py
-```
-
-### Regenerating the TFLite Model
-The TensorFlow model conversion script is in the `ml/` directory.
-```bash
-cd ml
-python convert_to_tflite.py
-```
-This will produce a new `detect.tflite` model. Copy it to `app/assets/`.
 
 ## Configuration
 - **Weather API Key:** (Optional) To use real OpenWeatherMap data instead of the fallback, supply an API key at build time. Note: if not supplied, the app will fall back to an 'unavailable' weather status, gracefully degrading the risk assessment.

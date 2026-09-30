@@ -45,7 +45,7 @@ dependencies:
   image_picker: ^1.1.2
   sunrise_sunset_calc: ^3.0.0
   ultralytics_yolo:
-    path: c:/Users/chris/Documents/projects/ContextDrive/yolo-flutter-app-main/yolo-flutter-app-main
+    path: ../packages/ultralytics_yolo
   sensors_plus: ^7.1.0
 dev_dependencies:
   flutter_test:
@@ -70,9 +70,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  assets:
-    - assets/detect.tflite
-    - assets/labelmap.txt
+  # assets:
+  #   - assets/detect.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

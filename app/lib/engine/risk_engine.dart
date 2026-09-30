@@ -10,7 +10,6 @@ class RiskEngine {
 
     // Example deterministic rules based on PRD
     bool hasSpeed = context.currentSpeed != null;
-    bool highSpeed = hasSpeed && context.currentSpeed! > 60.0;
     bool veryHighSpeed = hasSpeed && context.currentSpeed! > 80.0;
     bool poorVisibility = context.isNight || (context.isWeatherAvailable && (context.isRaining || context.visibility < 1000));
     

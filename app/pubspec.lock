@@ -856,8 +856,8 @@ packages:
   ultralytics_yolo:
     dependency: "direct main"
     description:
-      path: "c:/Users/chris/Documents/projects/ContextDrive/yolo-flutter-app-main/yolo-flutter-app-main"
-      relative: false
+      path: "../packages/ultralytics_yolo"
+      relative: true
     source: path
     version: "0.6.15"
   url_launcher:
