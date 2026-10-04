@@ -1,0 +1,119 @@
+\chapter{Requirement Specification}
+
+This chapter describes the functional, hardware, and software requirements of the Farming Intelligence AI system. The requirements define the main features, hardware components, and software technologies required for developing and operating the system.
+
+\section{Functional Requirements}
+
+\subsection{User Registration}
+
+The system shall allow farmers to register and manage their user profiles. Authentication and role-based access shall be provided for users and administrators.
+
+\subsection{Farm Data Management}
+
+The system shall allow users to enter and manage farm-related information such as location, area, soil type, current crop, and soil parameters. The system shall also support obtaining soil information from the connected IoT sensor.
+
+\subsection{Crop Recommendation}
+
+The system shall analyse agricultural parameters such as nitrogen, phosphorus, potassium, temperature, humidity, pH, and rainfall to recommend the top three to five suitable crops.
+
+\subsection{Explainable AI}
+
+The system shall provide explanations for crop recommendations using Explainable AI techniques such as SHAP and LIME. The explanations shall help users understand the important factors influencing the recommended crops.
+
+\subsection{Market Intelligence and Price Forecasting}
+
+The system shall provide crop market information, price trends, estimated future prices, and profitability-related information to support better crop selection and economic decision-making.
+
+\subsection{RAG-Based Agricultural Assistant}
+
+The system shall provide an AI-based agricultural assistant using Retrieval-Augmented Generation (RAG). The assistant shall retrieve relevant information from a prepared agricultural knowledge base and use it to provide farming-related guidance.
+
+\subsection{IoT Monitoring}
+
+The system shall display live soil information collected from the ESP32-based IoT system. The 7-in-1 soil sensor provides measurements including soil moisture, temperature, pH, electrical conductivity (EC), nitrogen (N), phosphorus (P), and potassium (K).
+
+\subsection{Fertilizer and Irrigation Advisory}
+
+The system shall provide fertilizer and irrigation guidance based on soil parameters, moisture conditions, crop requirements, and available weather information.
+
+\subsection{Weather Information}
+
+The system shall obtain current weather and forecast information using the Open-Meteo weather service. Weather information shall be used to support agricultural advisory and decision-making.
+
+\subsection{Alerts and Notifications}
+
+The system shall provide relevant alerts and notifications related to irrigation requirements, weather conditions, and other important agricultural information.
+
+\section{Hardware Requirements}
+
+\subsection{ESP32-WROOM-32E}
+
+The ESP32-WROOM-32E development board is used as the main IoT controller. It collects readings from the soil sensor and transmits the sensor data to the application through Wi-Fi.
+
+\subsection{7-in-1 Agricultural Soil Sensor}
+
+The 7-in-1 agricultural soil sensor is used to measure soil moisture, temperature, pH, electrical conductivity (EC), nitrogen (N), phosphorus (P), and potassium (K). The sensor communicates with the ESP32 using the RS485 Modbus RTU protocol.
+
+\subsection{RS485-to-TTL Converter}
+
+An RS485-to-TTL converter is used to establish communication between the RS485-based soil sensor and the ESP32. It converts the sensor's RS485 communication signals into signals that can be handled by the ESP32.
+
+\subsection{External Power Supply}
+
+An external 12V power supply is used to power the 7-in-1 soil sensor. A common ground is maintained between the sensor power supply and the ESP32 system.
+
+\subsection{Wi-Fi Connectivity}
+
+Wi-Fi connectivity provided through the ESP32 is used to transmit the collected sensor information to the cloud-based application.
+\clearpage
+\section{Software Requirements}
+
+The Farming Intelligence AI system uses a modern web-based software architecture. The application is primarily developed using TypeScript, React, Node.js, Express, Firebase Firestore, Tailwind CSS, and integrated AI and weather services.
+
+\subsection{TypeScript}
+
+TypeScript is the primary programming language used for the application. It is used across the frontend, backend services, agricultural advisory logic, machine learning-related processing, RAG services, and supporting modules.
+
+\subsection{React and TSX}
+
+React is used to develop the user interface of the application. TSX is used for implementing React components and creating a modular and responsive interface for features such as the dashboard, farm profile, crop recommendation, live soil monitoring, market intelligence, and agricultural assistant.
+
+\subsection{HTML5, CSS3 and Tailwind CSS}
+
+HTML5 provides the basic structure of the web application, while CSS3 is used for styling and layout. Tailwind CSS is used for responsive and utility-based interface design. These technologies allow the application to provide a consistent interface across desktop and mobile devices.
+
+\subsection{Node.js and Express}
+
+Node.js provides the server-side runtime environment for the application, while Express is used as the backend framework. The backend manages application requests and communication between the frontend and services such as authentication, agricultural advisory, weather, market intelligence, and the RAG assistant.
+
+\subsection{Machine Learning and Crop Recommendation}
+
+The crop recommendation module analyses agricultural parameters including N, P, K, temperature, humidity, pH, and rainfall. The system processes these parameters and provides the top three to five suitable crop recommendations.
+
+\subsection{Explainable AI -- SHAP and LIME}
+
+SHAP and LIME are used to provide explanations for crop recommendations. They help identify the important input parameters influencing the prediction and improve the transparency of the recommendation process.
+
+\subsection{Firebase Firestore}
+
+Firebase Firestore is used as the cloud-based NoSQL database for storing application information. The system can store user, farm, sensor, recommendation, and other application-related data using Firestore collections and documents. Firestore security rules are used to control access to stored information.
+
+\subsection{IoT and Modbus Communication}
+
+The IoT module uses an ESP32-WROOM-32E and a 7-in-1 Modbus RTU soil sensor. The sensor communicates with the ESP32 through RS485. The ESP32 receives the sensor readings and makes the live soil information available to the application.
+
+\subsection{Open-Meteo Weather Service}
+
+Open-Meteo is used to obtain current weather conditions and forecast information. The weather data provides additional environmental information for crop recommendations, irrigation guidance, and agricultural decision-making.
+
+\subsection{RAG-Based AI Assistant}
+
+The agricultural assistant uses a Retrieval-Augmented Generation approach. Agricultural documents are processed and stored in a vector-based knowledge system. Relevant information is retrieved according to the user's query and provided as context to the AI model for generating the response.
+
+\subsection{Market Intelligence}
+
+The market intelligence module provides crop price information, market trends, estimated future prices, and profitability-related information. This allows users to consider economic factors along with crop suitability when selecting crops.
+
+\subsection{Firebase Authentication and Security}
+
+Firebase-based authentication and application security mechanisms are used to manage user access. Sensitive configuration values and API keys are kept in environment configuration rather than being exposed directly in the client-side application.

@@ -1,0 +1,102 @@
+\chapter{Literature Review}
+
+\section{An IoT Enabled AI System for Real Time Crop Prediction Using Soil and Weather Data in Precision Agriculture}
+
+This paper by Sharafat et al., published in \emph{Smart Agricultural Technology} (Elsevier, 2025), presents an IoT enabled artificial intelligence system for real time crop prediction. The system combines machine learning with soil sensors and weather information to provide crop recommendations under real field conditions. Unlike approaches that rely only on stored datasets, the proposed system extends the prediction model to real IoT hardware and live data.
+
+\subsection{Methodology}
+
+The authors used a dataset containing 3,300 samples covering 22 different crops. Several machine learning and deep learning models were trained and compared to identify the most suitable model for crop prediction. The stacking model with SVC achieved the highest accuracy of 95.9%, followed by Random Forest with 95.8% and TabNet with 92.0%.
+
+The selected model was deployed on a Raspberry Pi~5 connected to soil sensors. Weather information was obtained through weather APIs and combined with the sensor data for real time prediction. The results and sensor information were displayed using the ThingsBoard IoT platform.
+
+The system also incorporated LIME to explain the predictions made by the machine learning model. The practical usefulness of the system was further evaluated through a survey involving farmers. This provided an additional assessment of the system beyond the model accuracy.
+
+\subsection{Advantages}
+
+The proposed system provides real time crop prediction using actual IoT hardware and environmental data. The integration of weather information improves the range of inputs available for prediction. The use of LIME provides explanations for the model predictions, making the system more understandable to users. The farmer survey also provides practical feedback on the usefulness of the system.
+
+\subsection{Disadvantages}
+
+One major limitation is that the dataset is restricted to a single district, which may introduce regional bias. The study does not provide extensive cross regional validation, and therefore the model may not generalise effectively to areas with different soil, climate, and crop conditions.
+
+\section{Enhancing Precision Agriculture through Cloud Based Transformative Crop Recommendation Model}
+
+This paper by Singh and Sharma , published in \emph{Scientific Reports} (Nature Portfolio, 2025), presents a cloud based crop recommendation system designed to provide agricultural recommendations to farmers. The work focuses on combining machine learning and cloud computing to make crop recommendations accessible, particularly for farmers in remote areas.
+
+\subsection{Methodology}
+
+The authors developed a model called TCRM (Transformative Crop Recommendation Model). The proposed model combines tree based machine learning algorithms, including Random Forest and Extra Trees, with a deep learning model developed using TensorFlow. The model was trained using soil and climatic parameters relevant to crop selection and achieved an accuracy of 94%.
+
+The trained model was deployed on the AWS cloud platform so that crop recommendations could be accessed remotely. The system also uses SMS alerts to communicate recommendations to farmers. This approach is intended to improve accessibility for farmers who may not have continuous access to advanced digital applications.
+
+The combination of machine learning, cloud computing, and SMS communication provides an integrated method for delivering crop recommendations. The cloud deployment also allows the system to be scaled and accessed from different locations without requiring the complete prediction infrastructure at the user's end.
+
+\subsection{Advantages}
+
+The system provides scalable cloud based crop recommendation and can deliver information through SMS alerts. This makes the system useful for farmers in remote areas. The combination of multiple machine learning approaches also provides good prediction performance.
+
+\subsection{Disadvantages}
+
+The dataset is mainly based on Punjab conditions, which limits the generalisation of the model to other regions. The system does not use real time IoT sensor data for crop prediction. It also does not include dedicated Explainable AI techniques such as SHAP or LIME.
+
+\section{Empowering Farmers with AI: A RAG based LLM Advisory Framework}
+
+This paper by Sawant, Nair and Hariharan , published in the \emph{Journal of Agricultural Engineering} (2026), presents a Retrieval-Augmented Generation based framework for providing agricultural advice. The work focuses on improving the reliability of large language models by retrieving relevant information from an agricultural knowledge base before generating responses.
+
+\subsection{Methodology}
+
+The proposed framework uses Amazon Titan embeddings to convert agricultural information into vector representations. These embeddings are stored in the ChromaDB vector database, which allows relevant information to be retrieved when a user submits an agricultural query.
+
+The retrieved information is provided as context to a large language model for generating the final response. Four different models, namely Llama~3.1, Mistral, Phi-3 and Qwen~2.5, were evaluated to compare their performance in agricultural question answering.
+
+The retrieval performance was evaluated using Recall@K and Mean Reciprocal Rank (MRR). The system achieved a Recall@K of 0.8704 and an MRR of 0.8889.\clearpage The faithfulness of the generated answers reached up to 100 for the best performing model, Mistral. The framework also provides source citations with the generated responses.
+
+\subsection{Advantages}
+
+The RAG approach grounds responses in information retrieved from a prepared agricultural knowledge base, helping to reduce hallucinations. The comparison of multiple LLMs provides useful information about their performance. Source citations also improve the transparency and traceability of the generated answers.
+
+\subsection{Disadvantages}
+
+The framework supports English only, which limits its accessibility to farmers who prefer regional languages. The knowledge base is relatively static and does not automatically update with new information. The retrieval precision is also moderate, indicating scope for improving the retrieval process.
+
+\section{Advancing Crop Recommendation System with Supervised ML and XAI}
+
+This paper by Shastri, Kumar, Mansotra and Salgotra , published in \emph{Scientific Reports} (Nature Portfolio, 2025), investigates the use of supervised machine learning and Explainable AI for crop recommendation. The study focuses on comparing different classification algorithms and improving the interpretability of crop predictions.
+
+\subsection{Methodology}
+
+The authors evaluated ten supervised machine learning algorithms using a dataset containing 22 crop classes. The models were trained using agricultural parameters and their classification performance was compared to identify the most suitable algorithm for crop recommendation.
+
+Among the evaluated models, Gradient Boosting achieved the highest test accuracy of 99.27%. The study also analysed the performance of the models across different crop classes to provide a detailed comparison of their classification capabilities.
+
+LIME was used to explain the predictions generated by the model. It identifies the input features that have the greatest influence on an individual prediction, allowing users to better understand the reasons behind a recommended crop.
+
+\subsection{Advantages}
+
+The study provides a detailed comparison of ten supervised machine learning algorithms and reports strong prediction performance. The use of LIME improves the interpretability of individual crop recommendations. The class wise evaluation also provides a more detailed understanding of model performance.
+
+\subsection{Disadvantages}
+
+Training and comparing ten different models requires additional computational resources and time. The explainability approach mainly focuses on individual predictions and does not provide a complete representation of the overall behaviour of the trained model.
+
+\section{Optimizing Agricultural Yield: A Predictive Model for Profitable Crop Harvesting Based on Market Dynamics}
+
+This paper by Sable, Shukla, Mahalle and Khedkar , published in \emph{Frontiers in Computer Science} (2025), focuses on the economic aspects of agricultural decision-making. The study uses machine learning to analyse historical crop prices and identify profitable harvesting periods based on market conditions.
+
+\subsection{Methodology}
+
+The authors used three years of crop price data covering more than 160 crops from the Pune market. Thirteen machine learning models were evaluated to determine their ability to predict crop prices and market trends.
+
+The Decision Tree model achieved the best performance with an $R^2$ value of 0.99, while XGBoost achieved an $R^2$ value of 0.98. The results demonstrate the ability of machine learning models to analyse historical agricultural market data and support price prediction.
+
+The selected prediction model was implemented through a Streamlit web application. The application provides information about suitable harvesting periods based on predicted market conditions, allowing the research to connect machine learning based price prediction with a practical farmer oriented application.
+
+\subsection{Advantages}
+
+The study uses real market price data collected over three years and compares several machine learning models. The high $R^2$ values demonstrate strong predictive performance on the evaluated dataset. The Streamlit application also provides a practical interface for using the prediction results.
+
+\subsection{Disadvantages}
+
+The model is dependent on the selected market and its historical data, which may limit its application to other regions. The approach assumes relatively stable conditions such as constant costs, which may not always reflect real farming conditions. Its short term focus may also reduce prediction reliability during highly volatile market conditions.
+

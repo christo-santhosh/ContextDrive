@@ -1,0 +1,61 @@
+\chapter{Introduction}
+
+\section{Overview}
+
+Agriculture depends on several important factors such as soil condition, weather, crop requirements, water availability, and market conditions. Farmers often make decisions based on personal experience, traditional practices, or information collected from different sources. This can make crop selection and farm management difficult, especially when environmental and market conditions change.
+
+\textbf{Farming Intelligence AI} is a cloud-based agricultural decision support system developed to help farmers make better farming decisions using data and Artificial Intelligence. The system combines Internet of Things (IoT), machine learning, Explainable AI (XAI), market intelligence, and Retrieval-Augmented Generation (RAG) technologies in a single platform.
+
+The system uses an ESP32 connected to a 7-in-1 soil sensor to collect important soil parameters such as nitrogen, phosphorus, potassium, pH, moisture, temperature, and electrical conductivity. Weather information is also considered for analysing the current farming conditions. A machine learning model uses these inputs to recommend the top three to five suitable crops.
+
+In addition to crop recommendation, the system provides fertilizer and irrigation guidance based on the available soil and environmental information. Explainable AI techniques such as SHAP and LIME help the user understand the factors influencing the recommended crops. Market intelligence provides price and profitability-related information to support better crop selection.
+
+The system also includes a RAG-based agricultural assistant that provides farming-related information using a prepared knowledge base. Multilingual support and a responsive interface make the platform easier to access through computers and mobile devices.
+
+\section{General Background}
+
+Modern agriculture can benefit from technologies that provide accurate and timely information about field conditions. IoT sensors allow soil parameters to be collected directly from the field. In this system, the ESP32 receives readings from the 7-in-1 soil sensor and makes the information available to the application.
+
+Machine learning can be used to analyse soil and environmental parameters and identify suitable crops. This helps reduce dependence on manual crop selection. Explainable AI further improves the system by showing the important factors that influence a recommendation.
+
+Weather conditions also have an important role in farming. Temperature, humidity, rainfall, and other environmental conditions can affect crop growth and irrigation requirements. Therefore, the system combines soil and weather information to provide more useful agricultural guidance.
+
+Market conditions are also considered because crop selection depends not only on suitability but also on expected economic benefits. The market intelligence module provides price trends, estimated prices, and profitability information for supported crops.
+
+The RAG-based assistant provides another way for users to obtain agricultural information. It retrieves relevant information from the prepared knowledge base and uses it to generate farming-related responses. Thus, the system brings different agricultural information sources together in one platform.
+
+\section{Problem Statement}
+
+Farmers need to make important decisions regarding crop selection, fertilizer application, irrigation, and expected profitability. However, the required information is often available through different and disconnected sources. Farmers may have to separately check soil conditions, weather information, crop requirements, agricultural advice, and market prices.
+
+Many crop recommendation systems mainly focus on predicting a suitable crop from manually entered parameters. Such systems may not provide live soil monitoring, explanations for predictions, fertilizer and irrigation guidance, or market-related information in the same platform. Access to reliable agricultural information can also be difficult for users who prefer regional languages.
+
+%Therefore, there is a need for an integrated agricultural decision support %system that combines IoT-based soil monitoring, weather information, %machine learning, agricultural advisory, Explainable AI, market %intelligence, and knowledge-based assistance in a single user-friendly platform.
+
+\section{Objectives}
+
+The main objectives of the Farming Intelligence AI project are:
+
+\begin{enumerate}
+    \item To monitor important soil parameters using an ESP32 and 7-in-1 soil sensor.
+    
+    \item To recommend the top five suitable crops using soil and environmental parameters.
+    
+    \item To provide fertilizer and irrigation guidance based on soil and weather conditions.
+    
+    \item To explain crop recommendations using Explainable AI techniques such as SHAP and LIME.
+    
+    \item To provide market price, trend, and profitability information to support crop selection.
+    
+    \item To develop a RAG-based agricultural assistant using a prepared agricultural knowledge base.
+    
+    \item To provide multilingual and mobile-friendly access to the agricultural decision support system.
+\end{enumerate}
+
+\section{Scope of the System}
+
+The Farming Intelligence AI system covers several major areas of agricultural decision support. It provides IoT-based soil monitoring using the ESP32 and 7-in-1 soil sensor, weather-based insights, machine learning based crop recommendation, and fertilizer and irrigation advisory.
+
+The system also includes Explainable AI for understanding crop predictions and market intelligence for analysing price and profitability information. The RAG-based assistant provides additional agricultural guidance from the prepared knowledge base. A responsive interface allows farmers to access these features through desktop and mobile devices.
+
+The system also provides administrative functions for managing users and relevant system data. It is intended to support farmers in making informed decisions rather than replacing their experience or judgement. 

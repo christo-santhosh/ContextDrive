@@ -1,0 +1,66 @@
+\chapter{Literature Review}
+
+\section{Personalised Driver Risk Assessment with Adaptive Feedback using Crowdsensed Telemetric Data}
+
+This paper by Auwal Sagir Muhammad et al., published in IET Intelligent Transport Systems (IET, 2025), presents a comprehensive framework for assessing driver risk using telemetric data. The study focuses on transforming raw GPS traces and temporal data into structured driving risk indicators to provide adaptive feedback to drivers. Unlike systems that rely on complex in-vehicle sensors, this approach utilizes crowdsensed data to evaluate driving behavior under various contextual conditions.
+
+\subsection{Methodology}
+The authors utilized a dataset of crowdsensed telemetric data to engineer several GPS-derived driver risk indicators. These indicators included specific thresholds for harsh braking, rapid acceleration, overspeeding, and turning rates computed directly from bearing changes. Additionally, the system incorporated contextual flags based on nighttime driving and rainy weather conditions. These engineered indicators provided a structured approach for extracting interpretable driving risk features from raw telemetric data. Various machine learning models were then applied to evaluate how these indicators effectively capture driving volatility and predict overall driver risk.
+
+\subsection{Advantages}
+The proposed system introduces validated feature engineering methods for transforming raw GPS, temporal, and weather information into meaningful driver behavior indicators. By relying on well-defined, threshold-based rules, the approach provides an easily interpretable and scalable solution for telematics-based risk assessment.
+
+\subsection{Disadvantages}
+One major limitation is that the proposed thresholds were validated within a specific machine learning pipeline and regional context. Therefore, their numerical values may require significant recalibration when applied to different risk assessment frameworks or different geographical driving environments.
+
+\section{A New CNN Based Object Detection System for Autonomous Mobile Robots Based on Real World Vehicle Datasets}
+
+This paper by Udink Aulia et al., published in Heliyon (Elsevier, 2024), presents a lightweight object detection system designed for autonomous mobile robots. The study addresses the challenge of deploying accurate vehicle detection models on hardware-constrained edge devices. By leveraging transfer learning on a customized dataset, the proposed system aims to balance real-time processing speeds with high detection accuracy in real-world environments.
+
+\subsection{Methodology}
+The authors developed a vehicle detection system using the SSD MobileNetV2 FPN-Lite architecture, which is known for its efficiency on mobile and edge devices. To overcome the limitations of generic pre-trained models, they employed transfer learning. The pre-trained detector was fine-tuned on a newly collected and annotated real-world vehicle dataset specifically designed for the target deployment environment. Several training configurations were tested and compared to identify the optimal hyperparameters that maximize the mean Average Precision (mAP) while keeping inference latency low enough for real-time mobile robot navigation.
+
+\subsection{Advantages}
+The study demonstrates that transfer learning and fine-tuning of a lightweight SSD MobileNetV2 detector can significantly improve vehicle detection accuracy while maintaining strict real-time performance. This provides a highly practical approach for domain-specific deployment on resource-constrained edge devices.
+
+\subsection{Disadvantages}
+Detection performance heavily depends on the quality, size, and diversity of the fine-tuning dataset. Consequently, adapting the model to completely new environments or different weather conditions requires substantial additional data collection and manual annotation efforts.
+
+\section{Using Contextual Data to Predict Risky Driving Events: A Novel Methodology from Explainable Artificial Intelligence}
+
+This paper by Leandro Masello et al., published in Accident Analysis \& Prevention (Elsevier, 2023), investigates how contextual factors influence risky driving events. The research introduces a methodology based on explainable artificial intelligence (XAI) to move beyond isolated risk variables. Instead of treating speed or braking in a vacuum, the proposed framework analyzes how combined environmental and traffic contexts compound to create hazardous driving situations.
+
+\subsection{Methodology}
+The authors utilized large-scale telematics data combined with contextual driving factors, including varying speed limits, real-time weather conditions, traffic density, road characteristics, and other environmental variables. They trained supervised machine learning models, specifically tree-based ensembles, to predict the occurrence of risky driving events. To interpret the complex interactions between these variables, they applied XAI techniques like SHAP (SHapley Additive exPlanations). This allowed them to quantify the exact contribution of each contextual factor---and their non-linear combinations---toward the likelihood of a risky driving event occurring.
+
+\subsection{Advantages}
+The methodology effectively demonstrates that driving risk is determined by the combined, compounded influence of multiple contextual factors rather than isolated variables. It provides a strong, evidence-based foundation for context-aware risk assessment and dynamic feature weighting in driver assistance systems.
+
+\subsection{Disadvantages}
+The proposed methodology relies heavily on large-scale historical telematics data for supervised machine learning. As a result, the models require extensive retraining and recalibration when applied to completely different driving environments, varying vehicle types, or new geographical datasets.
+
+\section{Optimizing Monocular Driving Assistance for Real Time Processing on Jetson AGX Xavier}
+
+This paper by Huy-Hung Nguyen et al., published in IEEE Access (IEEE, 2024), presents a monocular camera-based Advanced Driver Assistance System (ADAS) optimized for edge computing. The study focuses on maximizing the efficiency of vision-based perception algorithms so they can perform complex road scene understanding in real time. The proposed system identifies multiple road users simultaneously without relying on expensive LiDAR or radar sensors.
+
+\subsection{Methodology}
+The authors developed a unified vision pipeline that employs a lightweight object detection model to process live monocular camera feeds. The system was specifically optimized and deployed on the NVIDIA Jetson AGX Xavier edge computing platform. They integrated techniques such as tensor optimization and reduced precision inference to accelerate the detection of vehicles, pedestrians, and traffic signs. The performance of the optimized models was then rigorously benchmarked against baseline architectures to evaluate the trade-offs between frame rate, processing latency, and overall detection accuracy in dynamic driving scenarios.
+
+\subsection{Advantages}
+The research demonstrates that a single monocular camera, combined with heavily optimized lightweight object detection, can reliably perform real-time perception tasks for driver assistance. This validates the feasibility of camera-based road scene understanding without needing specialized, expensive sensors.
+
+\subsection{Disadvantages}
+The system's architecture and performance enhancements are heavily optimized specifically for the Jetson AGX Xavier hardware platform. This makes the deployment strategy and acceleration techniques less directly transferable to other edge platforms or standard smartphone-based implementations.
+
+\section{Balancing Transparency and Control: The Impact of AI Explanation Detail on User Perception in Automated Vehicles}
+
+This paper by Jakob Peintner et al., published in Transportation Research Interdisciplinary Perspectives (Elsevier, 2025), investigates the effect of AI explainability on user trust in automated driving systems. The study explores how different levels of detail in safety explanations affect a user's perception of the vehicle's decision-making. The goal is to find the optimal balance between providing enough transparency to build trust without overwhelming the user with excessive information.
+
+\subsection{Methodology}
+The authors conducted a comprehensive virtual reality (VR) driving study involving human participants interacting with a simulated Level-4 automated vehicle. They tested four different AI explanation levels: ``None'' (no explanation), ``How'' (describing the vehicle's action), ``How \& Why'' (describing the action and the reasoning), and ``Contrastive \& Counterfactual'' (explaining why an alternative action was not taken). Through surveys and behavioral monitoring during the VR simulation, they evaluated the influence of each explanation level on user trust, cognitive load, user experience, and perceived safety.
+
+\subsection{Advantages}
+The study provides empirical evidence that concise ``How \& Why'' explanations offer an effective balance between transparency and usability. It establishes a clear, evidence-based approach for designing understandable and trustworthy driver assistance recommendations without causing cognitive overload.
+
+\subsection{Disadvantages}
+The findings are strictly based on passenger interactions within a simulated Level-4 highly automated driving environment. Consequently, these results may not directly generalize to real-time, manual driver assistance systems where the human user actively controls the vehicle and requires split-second alerts.

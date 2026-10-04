@@ -1,0 +1,11 @@
+%================================ Abstract ====================================
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Road safety is significantly affected by a combination of factors, including driver inattention, adverse weather conditions, vehicle speed, and complex traffic environments. This project, \textbf{ContextDrive}, presents a smartphone-based, context-aware driver assistance system designed to improve road safety by assessing driving risk in real time.
+
+The system utilizes a standard smartphone equipped with a rear camera, GPS receiver, and internet connectivity to gather comprehensive driving data. It integrates real-time camera frames for object detection, GPS data for speed and location analysis, weather information via the OpenWeatherMap API, and time-based context. A lightweight object detection model, YOLOv8 Nano (YOLOv8n) running on Google LiteRT (formerly TensorFlow Lite), identifies vehicles and obstacles, while an intelligent engine analyzes these multiple driving factors together rather than treating individual hazards independently.
+
+To ensure transparency and build driver trust, ContextDrive provides transparent safety recommendations based on the combined contextual data. The system continuously estimates the current driving risk score and delivers timely alerts to the driver. The proposed architecture performs entirely on-device, ensuring real-time responsiveness and privacy without the need for expensive or specialized external hardware.
+
+By combining computer vision, edge computing, and context-aware risk analysis, the platform provides drivers with an affordable, portable, and practical solution. ContextDrive enhances situational awareness, promotes safer driving habits, and offers an intelligent approach to proactive accident prevention.

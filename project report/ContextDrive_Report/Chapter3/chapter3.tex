@@ -1,0 +1,56 @@
+\chapter{Requirement Specification}
+
+\section{Functional Requirements}
+
+\subsection{Object Detection}
+The system shall detect vehicles and obstacles in real time using the smartphone's rear camera and a lightweight object detection model.
+
+\subsection{Contextual Risk Assessment}
+The system shall continuously calculate a driving risk score based on combined inputs such as vehicle speed, proximity to detected objects, and environmental conditions.
+
+\subsection{Transparent Safety Recommendations}
+The system shall provide clear, explicit reasoning for its risk assessments. The explanations shall help users understand the important factors influencing the current safety recommendations.
+
+\subsection{Telemetry and GPS Analysis}
+The system shall use the smartphone's GPS receiver to gather live speed, location, and bearing information. This data shall be used to evaluate driving behavior and compute telemetry-based risk indicators.
+
+\subsection{Weather and Environmental Monitoring}
+The system shall obtain current weather information using the OpenWeatherMap API. Weather information, such as rain and visibility, shall be used to adjust risk calculations dynamically.
+
+\subsection{Real-Time Visual Feedback}
+The system shall provide an intuitive dashboard interface displaying the live camera feed, current risk status, and safety alerts directly on the mounted mobile device.
+
+\subsection{Alerts and Notifications}
+The system shall issue timely, context-aware warnings to the driver regarding unsafe following distances, speed violations, and adverse weather conditions.
+\section{Hardware Requirements}
+
+\subsection{Smartphone Device}
+A modern smartphone serves as the primary target platform for the application, providing the necessary computational capability, memory, and internet connectivity to run the system entirely on-device without requiring external processing hardware.
+
+\subsection{Rear Camera}
+The smartphone's rear camera is used to capture live video feeds of the road scene. The continuous stream of frames is passed to the object detection model to identify vehicles and vulnerable road users in real-time.
+
+\subsection{GPS Receiver}
+The built-in GPS receiver of the smartphone is utilized to gather real-time telemetry data. It provides continuous updates on vehicle speed, location coordinates, and bearing, which are critical for driving behavior analysis and risk assessment.
+
+\subsection{Internet Connectivity}
+A stable mobile data or Wi-Fi connection is required to retrieve real-time weather information and forecasts through external APIs, ensuring the risk assessment engine operates with up-to-date environmental context.
+
+\section{Software Requirements}
+
+The ContextDrive system utilizes a modern mobile application architecture. It is primarily developed using Dart, Flutter, Google LiteRT, and integrates advanced object detection models and weather services.
+
+\subsection{Dart}
+Dart is the primary programming language used for the application. It provides a robust, object-oriented framework for writing both the user interface and the underlying business logic, including the risk assessment engine and telemetry processing.
+
+\subsection{Flutter}
+Flutter is used as the cross-platform application framework to develop the user interface. It provides a modular and responsive foundation for features such as the live camera dashboard, risk status displays, and setting configurations, ensuring consistent performance.
+
+\subsection{Google LiteRT}
+Google LiteRT (formerly TensorFlow Lite) is employed as the on-device machine learning inference framework. It enables the application to execute complex object detection algorithms directly on the smartphone with low latency and high efficiency.
+
+\subsection{YOLOv8 Nano (YOLOv8n)}
+YOLOv8 Nano is the lightweight object detection model integrated into the system. It is specifically optimized for edge devices and is responsible for detecting and tracking vehicles and other obstacles in the camera's field of view in real time.
+
+\subsection{OpenWeatherMap API}
+The OpenWeatherMap API is used to fetch current weather conditions based on the user's GPS coordinates. This environmental data provides critical context, such as rain or poor visibility, which is integrated directly into the contextual risk assessment calculations.

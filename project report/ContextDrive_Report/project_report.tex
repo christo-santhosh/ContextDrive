@@ -1,0 +1,214 @@
+%=============================================================================
+%  FARMING INTELLIGENCE AI - B.Tech Project Report (KTU format)
+%  Vimal Jyothi Engineering College, Chemperi
+%  Compile with pdfLaTeX + BibTeX (Overleaf default settings work).
+%=============================================================================
+\documentclass[12pt,a4paper]{report}
+
+%---------------------------- Fonts (Times New Roman equivalent) --------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathptmx}
+\usepackage[english]{babel}
+
+%---------------------------- Packages ---------------------------------------
+\usepackage{graphicx}
+\usepackage{amsmath,amsfonts}
+\usepackage{float}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit}
+\usepackage[left=3.5cm,top=3cm,right=3cm,bottom=3.5cm]{geometry}
+\usepackage[
+    font=normalsize,
+    labelfont=bf,
+    labelsep=colon,
+    justification=centering
+]{caption}
+\usepackage[hidelinks]{hyperref}
+
+%---------------------------- Formatting per KTU guidelines ------------------
+% Body: Times 12 pt, 1.5 line spacing, justified
+\onehalfspacing
+\emergencystretch=2em
+\setlength{\parindent}{1cm}
+
+% Chapter title : 18 pt, bold, centred
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\centering}
+  {\fontsize{18}{22}\selectfont\chaptertitlename\ \thechapter}
+  {8pt}
+  {\fontsize{18}{22}\selectfont}
+\titlespacing*{\chapter}{0pt}{0pt}{20pt}
+
+% Heading 2 : 16 pt, bold, left aligned
+\titleformat{\section}
+  {\normalfont\fontsize{16}{20}\bfseries\raggedright}
+  {\thesection}{1em}{}
+\titlespacing*{\section}{0pt}{44pt}{14pt}
+
+% Heading 3 : 14 pt, bold, left aligned
+\titleformat{\subsection}
+  {\normalfont\fontsize{14}{18}\bfseries\raggedright}
+  {\thesubsection}{1em}{}
+\titlespacing*{\subsection}{0pt}{20pt}{8pt}
+
+% Heading 4 : 12 pt, bold, left aligned
+\titleformat{\subsubsection}
+  {\normalfont\fontsize{12}{15}\bfseries\raggedright}
+  {\thesubsubsection}{1em}{}
+\titlespacing*{\subsubsection}{0pt}{14pt}{6pt}
+
+% Figure title BELOW figure, table title ABOVE table
+\captionsetup[table]{skip=6pt}
+\captionsetup[figure]{skip=8pt}
+
+\pagestyle{headings}
+
+\bibliographystyle{IEEEtran}
+\renewcommand{\bibname}{References}
+\renewcommand{\arraystretch}{1.25}
+
+%---------------------------- Project details ---------------------------------
+\begin{document}
+
+\gdef\title{CONTEXTDRIVE}
+
+\gdef\dept{Computer Science and Engineering}
+\gdef\degree{Bachelor of Technology}
+\gdef\branch{Computer Science and Engineering}
+
+\gdef\college{VIMAL JYOTHI ENGINEERING COLLEGE}
+\gdef\collegeplace{CHEMPERI}
+
+\gdef\studentA{Angith Vijayan Ne}
+\gdef\studentAroll{VML23CS046}
+
+\gdef\studentB{Christo Santhosh}
+\gdef\studentBroll{VML23CS082}
+
+\gdef\studentC{Sebastian Mathew Parayidathil}
+\gdef\studentCroll{LVML23CS250}
+
+\gdef\studentD{Umarsinan N}
+\gdef\studentDroll{VML23CS234}
+
+\gdef\guide{Ms. Anju Sreedharan}
+\gdef\guidedes{Assistant Professor}
+
+\gdef\projcordinatorA{Ms. Dinsha P K}
+\gdef\projcordinatorAdes{Assistant Professor}
+
+\gdef\projcordinatorB{Dr. Nithya V P}
+\gdef\projcordinatorBdes{Associate Professor}
+
+\gdef\projcordinatorC{Dr. Renji P Cheriyan}
+\gdef\projcordinatorCdes{Professor}
+
+\gdef\hod{Ms. Divya B}
+\gdef\principal{Dr. Benny Joseph}
+
+\gdef\acadyear{2026 - 27}
+\gdef\month{October 2026}
+\gdef\date{05-10-2026}
+
+%=============================================================================
+% FRONT MATTER
+%=============================================================================
+
+% Cover pages and certificate without page numbers
+\pagenumbering{gobble}
+
+\include{coverpage/topcover}
+\include{coverpage/coverpage}
+\include{certificate/certificate}
+
+% Start Roman page numbering
+\pagenumbering{roman}
+
+% Declaration
+\include{declaration/declaration}
+
+% Acknowledgement
+\include{acknowledgement/acknowledgement}
+
+% Abstract
+\include{abstract/abstract}
+
+%=============================================================================
+% TABLE OF CONTENTS
+%=============================================================================
+
+\singlespacing
+
+\tableofcontents
+\clearpage
+
+%=============================================================================
+% LIST OF FIGURES
+%=============================================================================
+
+\listoffigures
+\phantomsection
+\addcontentsline{toc}{chapter}{List of Figures}
+\clearpage
+
+
+%=============================================================================
+% LIST OF ABBREVIATIONS
+%=============================================================================
+
+\include{abbreviations/abbreviations}
+
+% Return to 1.5 line spacing for the main report
+\onehalfspacing
+
+%=============================================================================
+% MAIN BODY
+%=============================================================================
+
+\cleardoublepage
+\setcounter{page}{1}
+\pagenumbering{arabic}
+
+\include{Chapter1/chapter1}
+\include{Chapter2/chapter2}
+\include{Chapter3/chapter3}
+\include{Chapter4/chapter4}
+\include{Chapter5/chapter5}
+\include{Chapter6/chapter6}
+\include{Chapter7/chapter7}
+%=============================================================================
+% APPENDICES
+%=============================================================================
+
+\appendix
+
+\include{appendix/appendixA}
+\include{appendix/appendixB}
+
+%=============================================================================
+% REFERENCES
+%============================================================================% REFERENCES
+%============================================================================% REFERENCES
+%============================================================================
+% REFERENCES
+%=============================================================================
+
+\singlespacing
+
+\renewcommand{\bibname}{References}
+\addcontentsline{toc}{chapter}{References}
+
+\nocite{*}
+\bibliographystyle{IEEEtran}
+\bibliography{reference/refs}
+
+\end{document}

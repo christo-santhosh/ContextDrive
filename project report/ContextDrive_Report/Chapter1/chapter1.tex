@@ -1,0 +1,44 @@
+\chapter{Introduction}
+
+\section{Overview}
+
+Road safety depends on several important factors such as vehicle speed, weather conditions, visibility, traffic density, and driver attention. Drivers often make decisions based on personal experience, traditional practices, or limited observations of their immediate surroundings. This can make safe driving difficult, especially when environmental and traffic conditions change rapidly.
+
+ContextDrive is a smartphone-based context-aware driver assistance system developed to help drivers make safer driving decisions using sensor data and Artificial Intelligence. The system combines computer vision, global positioning systems (GPS), weather intelligence, and transparent decision logic in a single platform.
+
+The system uses a standard smartphone equipped with a rear camera to collect important visual parameters such as nearby vehicles and obstacles. GPS information is also considered for analyzing the current speed and location. A machine learning model uses these inputs to detect road users and estimate the distance to potential hazards.
+
+In addition to object detection, the system provides contextual risk assessment and safety guidance based on the available telemetry and environmental information. A transparent rule-based engine helps the user understand the factors influencing the current risk level. Weather intelligence provides real-time rain and visibility-related information to support better situational awareness.
+
+The system also includes a multi-dimensional context vector that continuously updates the driving risk state. An intuitive and responsive interface makes the platform easy to use directly from a dashboard-mounted mobile device.
+
+\section{General Background}
+
+Modern driving can benefit from technologies that provide accurate and timely information about road conditions. Smartphone sensors allow vehicle telemetry and visual data to be collected directly from the dashboard. In this system, the smartphone camera and GPS receiver gather live readings and make the information available to the application.
+
+Machine learning can be used to analyze visual and environmental parameters and identify potential hazards on the road. This helps reduce dependence on manual risk estimation by the driver. Explicit reasoning further improves the system by showing the important factors that influence a safety recommendation, ensuring the driver understands why a warning was issued.
+
+Weather conditions also have an important role in driving safety. Visibility, rainfall, and time of day can severely affect braking distance and reaction times. Therefore, the system combines visual, telemetry, and weather information to provide more useful and context-aware driving guidance.
+
+Contextual interactions are also considered because driving risk depends not only on a single hazard but also on how multiple factors combine. The risk engine provides a comprehensive assessment by evaluating speed, proximity, and environment together. Thus, the system brings different driving information sources together in one cohesive platform.
+
+\section{Problem Statement}
+
+Drivers need to make important split-second decisions regarding speed, following distance, and maneuvering. However, the required information is often available through different and disconnected sources or is difficult to perceive manually. Drivers may have to separately judge traffic distance, monitor their speed, and mentally adjust for weather or visibility conditions.
+
+Many existing driver assistance systems mainly focus on detecting a specific hazard in isolation, such as a forward collision or lane departure. Such systems may not provide integrated contextual monitoring, transparent explanations for their warnings, or live environmental adjustments in the same affordable platform. Access to reliable, multi-factor safety information can also be difficult for users who do not own vehicles with expensive, built-in advanced driver assistance systems (ADAS).
+
+\section{Scope of the System}
+
+The ContextDrive system covers several major areas of driver assistance and safety monitoring. It provides real-time object detection using a smartphone camera, GPS-based telemetry insights, weather-aware risk adjustments, and time-based contextual analysis. The system also includes explicit reasoning logic for understanding risk predictions and a multi-dimensional context vector for analyzing combined driving factors. A responsive dashboard interface allows drivers to access these features directly from a mounted mobile device.
+
+The system also provides on-device data processing for ensuring privacy and low-latency performance without requiring specialized external hardware. It is intended to support drivers in maintaining situational awareness and making safer decisions rather than replacing their attention or active vehicle control.
+
+\section{Objectives}
+
+\begin{itemize}
+    \item To develop a smartphone based context-aware driver assistance system for real time driving risk assessment.
+    \item To integrate camera, GPS, weather, and time based information for comprehensive driving context analysis.
+    \item To generate a risk score and provide timely, transparent safety recommendations.
+    \item To improve driver awareness and promote safer driving without requiring additional hardware.
+\end{itemize}

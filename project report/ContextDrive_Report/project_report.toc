@@ -1,0 +1,71 @@
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{Abstract}{iii}{chapter*.1}%
+\contentsline {chapter}{List of Figures}{vi}{section*.4}%
+\contentsline {chapter}{List of Abbreviations}{vii}{chapter*.5}%
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Overview}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}General Background}{1}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Problem Statement}{2}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Scope of the System}{2}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Objectives}{3}{section.1.5}%
+\contentsline {chapter}{\numberline {2}Literature Review}{4}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Personalised Driver Risk Assessment with Adaptive Feedback using Crowdsensed Telemetric Data}{4}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}Methodology}{4}{subsection.2.1.1}%
+\contentsline {subsection}{\numberline {2.1.2}Advantages}{4}{subsection.2.1.2}%
+\contentsline {subsection}{\numberline {2.1.3}Disadvantages}{4}{subsection.2.1.3}%
+\contentsline {section}{\numberline {2.2}A New CNN Based Object Detection System for Autonomous Mobile Robots Based on Real World Vehicle Datasets}{5}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}Methodology}{5}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}Advantages}{5}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.3}Disadvantages}{5}{subsection.2.2.3}%
+\contentsline {section}{\numberline {2.3}Using Contextual Data to Predict Risky Driving Events: A Novel Methodology from Explainable Artificial Intelligence}{6}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Methodology}{6}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Advantages}{6}{subsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.3.3}Disadvantages}{6}{subsection.2.3.3}%
+\contentsline {section}{\numberline {2.4}Optimizing Monocular Driving Assistance for Real Time Processing on Jetson AGX Xavier}{7}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}Methodology}{7}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}Advantages}{7}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}Disadvantages}{7}{subsection.2.4.3}%
+\contentsline {section}{\numberline {2.5}Balancing Transparency and Control: The Impact of AI Explanation Detail on User Perception in Automated Vehicles}{8}{section.2.5}%
+\contentsline {subsection}{\numberline {2.5.1}Methodology}{8}{subsection.2.5.1}%
+\contentsline {subsection}{\numberline {2.5.2}Advantages}{8}{subsection.2.5.2}%
+\contentsline {subsection}{\numberline {2.5.3}Disadvantages}{8}{subsection.2.5.3}%
+\contentsline {chapter}{\numberline {3}Requirement Specification}{9}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Functional Requirements}{9}{section.3.1}%
+\contentsline {subsection}{\numberline {3.1.1}Object Detection}{9}{subsection.3.1.1}%
+\contentsline {subsection}{\numberline {3.1.2}Contextual Risk Assessment}{9}{subsection.3.1.2}%
+\contentsline {subsection}{\numberline {3.1.3}Transparent Safety Recommendations}{9}{subsection.3.1.3}%
+\contentsline {subsection}{\numberline {3.1.4}Telemetry and GPS Analysis}{9}{subsection.3.1.4}%
+\contentsline {subsection}{\numberline {3.1.5}Weather and Environmental Monitoring}{9}{subsection.3.1.5}%
+\contentsline {subsection}{\numberline {3.1.6}Real-Time Visual Feedback}{9}{subsection.3.1.6}%
+\contentsline {subsection}{\numberline {3.1.7}Alerts and Notifications}{10}{subsection.3.1.7}%
+\contentsline {section}{\numberline {3.2}Hardware Requirements}{10}{section.3.2}%
+\contentsline {subsection}{\numberline {3.2.1}Smartphone Device}{10}{subsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.2.2}Rear Camera}{10}{subsection.3.2.2}%
+\contentsline {subsection}{\numberline {3.2.3}GPS Receiver}{10}{subsection.3.2.3}%
+\contentsline {subsection}{\numberline {3.2.4}Internet Connectivity}{10}{subsection.3.2.4}%
+\contentsline {section}{\numberline {3.3}Software Requirements}{10}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Dart}{11}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}Flutter}{11}{subsection.3.3.2}%
+\contentsline {subsection}{\numberline {3.3.3}Google LiteRT}{11}{subsection.3.3.3}%
+\contentsline {subsection}{\numberline {3.3.4}YOLOv8 Nano (YOLOv8n)}{11}{subsection.3.3.4}%
+\contentsline {subsection}{\numberline {3.3.5}OpenWeatherMap API}{11}{subsection.3.3.5}%
+\contentsline {chapter}{\numberline {4}Proposed System and Design}{12}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Proposed System}{12}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Feasibility Study}{13}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}Technical Feasibility}{13}{subsection.4.2.1}%
+\contentsline {subsection}{\numberline {4.2.2}Operational Feasibility}{13}{subsection.4.2.2}%
+\contentsline {subsection}{\numberline {4.2.3}Economic Feasibility}{13}{subsection.4.2.3}%
+\contentsline {section}{\numberline {4.3}Design}{13}{section.4.3}%
+\contentsline {subsection}{\numberline {4.3.1}Architecture Diagram}{14}{subsection.4.3.1}%
+\contentsline {subsection}{\numberline {4.3.2}Use Case Diagram}{15}{subsection.4.3.2}%
+\contentsline {subsection}{\numberline {4.3.3}Level 0 DFD}{16}{subsection.4.3.3}%
+\contentsline {subsection}{\numberline {4.3.4}Level 1 DFD}{17}{subsection.4.3.4}%
+\contentsline {subsection}{\numberline {4.3.5}Level 2 DFD}{17}{subsection.4.3.5}%
+\contentsline {subsection}{\numberline {4.3.6}Methods and Techniques}{18}{subsection.4.3.6}%
+\contentsline {chapter}{\numberline {5}Progress in Project}{20}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Implementation}{20}{section.5.1}%
+\contentsline {subsection}{\numberline {5.1.1}Module Split-up}{20}{subsection.5.1.1}%
+\contentsline {subsection}{\numberline {5.1.2}Tools and Techniques}{21}{subsection.5.1.2}%
+\contentsline {chapter}{\numberline {6}Expected Outcome}{23}{chapter.6}%
+\contentsline {chapter}{\numberline {7}Conclusion}{24}{chapter.7}%
+\contentsline {chapter}{References}{25}{chapter.7}%

@@ -1,0 +1,93 @@
+This is BibTeX, Version 0.99e
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: project_report.aux
+Reallocating 'name_of_file' (item size: 1) to 9 items.
+The style file: IEEEtran.bst
+Reallocating 'name_of_file' (item size: 1) to 23 items.
+A level-1 auxiliary file: coverpage/topcover.aux
+Reallocating 'name_of_file' (item size: 1) to 24 items.
+A level-1 auxiliary file: coverpage/coverpage.aux
+Reallocating 'name_of_file' (item size: 1) to 28 items.
+A level-1 auxiliary file: certificate/certificate.aux
+Reallocating 'name_of_file' (item size: 1) to 28 items.
+A level-1 auxiliary file: declaration/declaration.aux
+Reallocating 'name_of_file' (item size: 1) to 36 items.
+A level-1 auxiliary file: acknowledgement/acknowledgement.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: abstract/abstract.aux
+Reallocating 'name_of_file' (item size: 1) to 32 items.
+A level-1 auxiliary file: abbreviations/abbreviations.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter1/chapter1.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter2/chapter2.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter3/chapter3.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter4/chapter4.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter5/chapter5.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter6/chapter6.aux
+Reallocating 'name_of_file' (item size: 1) to 23 items.
+A level-1 auxiliary file: appendix/appendixA.aux
+Reallocating 'name_of_file' (item size: 1) to 23 items.
+A level-1 auxiliary file: appendix/appendixB.aux
+Illegal, another \bibstyle command---line 26 of file project_report.aux
+ : \bibstyle
+ :          {IEEEtran}
+I'm skipping whatever remains of this command
+Reallocating 'name_of_file' (item size: 1) to 15 items.
+Reallocating 'singl_function' (item size: 4) to 100 items.
+Reallocating 'singl_function' (item size: 4) to 100 items.
+Reallocating 'singl_function' (item size: 4) to 100 items.
+Reallocating 'wiz_functions' (item size: 4) to 6000 items.
+Reallocating 'singl_function' (item size: 4) to 100 items.
+Database file #1: reference/refs.bib
+-- IEEEtran.bst version 1.14 (2015/08/26) by Michael Shell.
+-- http://www.michaelshell.org/tex/ieeetran/bibtex/
+-- See the "IEEEtran_bst_HOWTO.pdf" manual for usage information.
+
+Done.
+You've used 5 entries,
+            4087 wiz_defined-function locations,
+            871 strings with 8779 characters,
+and the built_in function-call counts, 3913 in all, are:
+= -- 338
+> -- 97
+< -- 23
++ -- 54
+- -- 26
+* -- 200
+:= -- 600
+add.period$ -- 10
+call.type$ -- 5
+change.case$ -- 5
+chr.to.int$ -- 36
+cite$ -- 5
+duplicate$ -- 299
+empty$ -- 274
+format.name$ -- 25
+if$ -- 894
+int.to.chr$ -- 0
+int.to.str$ -- 5
+missing$ -- 51
+newline$ -- 38
+num.names$ -- 5
+pop$ -- 111
+preamble$ -- 1
+purify$ -- 0
+quote$ -- 2
+skip$ -- 310
+stack$ -- 0
+substring$ -- 141
+swap$ -- 246
+text.length$ -- 11
+text.prefix$ -- 0
+top$ -- 5
+type$ -- 5
+warning$ -- 0
+while$ -- 12
+width$ -- 6
+write$ -- 73
+(There was 1 error message)

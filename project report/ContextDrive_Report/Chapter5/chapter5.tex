@@ -1,0 +1,46 @@
+\chapter{Progress in Project}
+
+\section{Implementation}
+The ContextDrive system has been implemented as an integrated advanced driver-assistance platform combining edge-based computer vision, GPS telemetry, environmental intelligence, and deterministic risk assessment. The implementation connects these diverse modules so that real-time driving data can be processed on-device and presented to the driver through a unified, smartphone-based interface.
+
+\subsection{Module Split-up}
+
+\noindent\textbf{Data Acquisition and Pre-processing Module}\\
+The data acquisition module collects the dynamic driving parameters required by the system. The implemented setup uses the smartphone's built-in sensors to obtain real-time video frames from the rear camera and speed, location, and bearing data from the GPS receiver. Weather information is obtained through an external weather service to provide environmental context such as visibility and precipitation. The collected values are validated and synchronized before being passed to the processing modules, ensuring that the input data is robust for risk evaluation.
+
+\vspace{0.5em}
+\noindent\textbf{Vision and Object Detection Module}\\
+The vision module is responsible for identifying potential hazards on the road ahead. The implemented model uses a lightweight YOLOv8 Nano architecture optimized for mobile devices. It processes the live camera frames to detect vehicles and obstacles, generating bounding boxes and estimating proximity. The continuous object detection results are used by the risk assessment module to determine safe following distances and potential collision risks.
+
+\vspace{0.5em}
+\noindent\textbf{Environmental Context Module}\\
+The environmental context module provides critical situational awareness based on the vehicle's current location. The system queries the OpenWeatherMap API to retrieve real-time weather conditions. By considering factors like fog, heavy rain, or low visibility, this module provides contextual weights that dynamically adjust the sensitivity of the risk assessment algorithms, converting raw weather data into actionable driving intelligence.
+
+\vspace{0.5em}
+\noindent\textbf{Risk Assessment Module}\\
+The risk assessment module evaluates the integrated driving data to compute a continuous driving risk score. The system employs a deterministic, rule-based engine that compares vehicle speed, object proximity, and weather conditions against predefined safety thresholds. Instead of merely logging data, the module classifies the current driving situation into distinct risk levels (e.g., Safe, Warning, Critical) to facilitate immediate driver response.
+
+\vspace{0.5em}
+\noindent\textbf{Transparent Explainability Module}\\
+To make the automated risk assessments easier to understand and trust, an explainability module generates explicit reasoning for its decisions. Whenever a warning or critical alert is triggered, the system analyzes the contributing factors (e.g., ``High speed in low visibility'' or ``Following too closely''). This approach ensures that the driver understands exactly why an alert was issued, reducing cognitive overload and improving the interpretability of the assistance system.
+
+\vspace{0.5em}
+\noindent\textbf{User Interface and Dashboard Module}\\
+The user interface module provides a seamless and intuitive dashboard for the driver. The mobile application overlays the live camera feed with real-time bounding boxes, the current risk score, safety alerts, and transparent recommendations. It is designed to deliver critical information efficiently without distracting the driver from the road. 
+
+\subsection{Tools and Techniques}
+
+\noindent\textbf{Frontend Development}\\
+The frontend of the system is developed using the Flutter framework with the Dart programming language. Flutter provides a highly responsive, cross-platform UI toolkit that enables the creation of a smooth, real-time camera dashboard. It handles the display of live video feeds, floating UI overlays for risk scores, and the presentation of transparent safety explanations.
+
+\vspace{0.5em}
+\noindent\textbf{Edge AI and Computer Vision}\\
+The core perception capabilities are powered by Google LiteRT (formerly TensorFlow Lite), which allows the YOLOv8 Nano model to execute efficiently directly on the smartphone hardware. This edge-AI approach ensures that video frames are processed locally in real-time, eliminating network latency and preserving driver privacy since video data never leaves the device.
+
+\vspace{0.5em}
+\noindent\textbf{Telemetry and Location Services}\\
+The system utilizes native smartphone GPS sensors accessed via Flutter location and geolocator packages. This provides the continuous stream of speed, heading, and coordinate data necessary for the risk engine to accurately monitor driving dynamics.
+
+\vspace{0.5em}
+\noindent\textbf{Environmental Data Services}\\
+The OpenWeatherMap API is used as the external cloud service for retrieving hyper-local weather data. Standard HTTP request libraries in Dart handle the API communication, fetching relevant environmental context based on the current GPS coordinates to enhance the system's situational awareness.
