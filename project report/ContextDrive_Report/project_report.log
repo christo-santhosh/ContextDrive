@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.9.24)  5 OCT 2026 00:28
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.9.24)  5 OCT 2026 01:02
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1038,22 +1038,22 @@ l.131 \include{certificate/certificate}
 
 
 
-])
+] [5])
 \tf@toc=\write5
 \openout5 = `project_report.toc'.
 
- [5]
+ [6]
 (project_report.lof)
 \tf@lof=\write6
 \openout6 = `project_report.lof'.
 
- [6
+ [7
 
 
 ]
 \openout2 = `abbreviations/abbreviations.aux'.
 
- (abbreviations/abbreviations.tex) [7
+ (abbreviations/abbreviations.tex) [8
 
 
 
@@ -1086,73 +1086,73 @@ Chapter 2.
 
 
 
-] [5] [6] [7]) [8]
+] [5] [6] [7] [8] [9] [10] [11]) [12]
 \openout2 = `Chapter3/chapter3.aux'.
 
  (Chapter3/chapter3.tex
 Chapter 3.
-[9
+[13
 
 
 
 
-] [10]) [11]
+] [14]) [15]
 \openout2 = `Chapter4/chapter4.aux'.
 
  (Chapter4/chapter4.tex
 Chapter 4.
-[12
+[16
 
 
 
 
-] [13]
-<img/arch_diagram.png, id=476, 1443.3925pt x 1097.09875pt>
+] [17]
+<img/arch_diagram.png, id=497, 1443.3925pt x 1097.09875pt>
 File: img/arch_diagram.png Graphic file (type png)
 <use img/arch_diagram.png>
 Package pdftex.def Info: img/arch_diagram.png  used on input line 36.
 (pdftex.def)             Requested size: 412.56497pt x 313.58037pt.
- [14 <./img/arch_diagram.png (PNG copy)>]
-<img/use_case_diagram.png, id=483, 322.20375pt x 271.0125pt>
+ [18 <./img/arch_diagram.png (PNG copy)>]
+<img/use_case_diagram.png, id=504, 322.20375pt x 271.0125pt>
 File: img/use_case_diagram.png Graphic file (type png)
 <use img/use_case_diagram.png>
 Package pdftex.def Info: img/use_case_diagram.png  used on input line 64.
 (pdftex.def)             Requested size: 330.05322pt x 277.62418pt.
- [15]
-<img/dfd_0.png, id=493, 3262.1875pt x 411.5375pt>
+ [19]
+<img/dfd_0.png, id=514, 3262.1875pt x 411.5375pt>
 File: img/dfd_0.png Graphic file (type png)
 <use img/dfd_0.png>
 Package pdftex.def Info: img/dfd_0.png  used on input line 79.
 (pdftex.def)             Requested size: 371.30595pt x 46.83914pt.
- [16 <./img/use_case_diagram.png> <./img/dfd_0.png>]
-<img/dfd_1.png, id=502, 4225.7875pt x 1585.925pt>
+ [20 <./img/use_case_diagram.png> <./img/dfd_0.png>]
+<img/dfd_1.png, id=522, 4225.7875pt x 1585.925pt>
 File: img/dfd_1.png Graphic file (type png)
 <use img/dfd_1.png>
 Package pdftex.def Info: img/dfd_1.png  used on input line 100.
 (pdftex.def)             Requested size: 371.30595pt x 139.33919pt.
- [17 <./img/dfd_1.png>]
-<img/dfd_2.png, id=509, 5244.59375pt x 2633.84pt>
+ [21 <./img/dfd_1.png>]
+<img/dfd_2.png, id=530, 5244.59375pt x 2633.84pt>
 File: img/dfd_2.png Graphic file (type png)
 <use img/dfd_2.png>
 Package pdftex.def Info: img/dfd_2.png  used on input line 130.
 (pdftex.def)             Requested size: 371.30595pt x 186.43729pt.
- [18 <./img/dfd_2.png>])
-[19]
+ [22 <./img/dfd_2.png>])
+[23]
 \openout2 = `Chapter5/chapter5.aux'.
 
  (Chapter5/chapter5.tex
 Chapter 5.
-[20
+[24
 
 
 
 
-]) [21] [22]
+]) [25] [26]
 \openout2 = `Chapter6/chapter6.aux'.
 
  (Chapter6/chapter6.tex
 Chapter 6.
-) [23
+) [27
 
 
 
@@ -1162,7 +1162,7 @@ Chapter 6.
 
  (Chapter7/chapter7.tex
 Chapter 7.
-) [24
+) [28
 
 
 
@@ -1178,7 +1178,7 @@ Chapter 7.
 Package caption Warning: Unused \captionsetup[table] on input line 70.
 See the caption package documentation for explanation.
 
-[25
+[29
 
 
 
@@ -1203,9 +1203,9 @@ Package rerunfilecheck Info: File `project_report.out' has not changed.
 (rerunfilecheck)             Checksum: 9CBD256908733874DBDEA5EFA92FF1A8;12147.
  ) 
 Here is how much of TeX's memory you used:
- 25417 strings out of 467871
- 489571 string characters out of 5418376
- 889049 words of memory out of 5000000
+ 25422 strings out of 467871
+ 489608 string characters out of 5418376
+ 889051 words of memory out of 5000000
  53596 multiletter control sequences out of 15000+600000
  678009 words of font info for 95 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
@@ -1215,9 +1215,9 @@ b><C:/Users/chris/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmr8a.pf
 b><C:/Users/chris/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmr8a.pf
 b><C:/Users/chris/AppData/Local/Programs/MiKTeX/fonts/type1/urw/times/utmri8a.p
 fb>
-Output written on project_report.pdf (34 pages, 2695432 bytes).
+Output written on project_report.pdf (39 pages, 2711030 bytes).
 PDF statistics:
- 598 PDF objects out of 1000 (max. 8388607)
- 127 named destinations out of 1000 (max. 500000)
+ 621 PDF objects out of 1000 (max. 8388607)
+ 132 named destinations out of 1000 (max. 500000)
  608 words of extra memory for PDF output out of 10000 (max. 10000000)
 
