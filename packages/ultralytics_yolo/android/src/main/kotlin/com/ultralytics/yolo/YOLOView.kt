@@ -1582,44 +1582,7 @@ class YOLOView @JvmOverloads constructor(
             viewHeight: Float,
             centered: Boolean = false
         ) {
-            paint.textSize = 40f
-            val fm = paint.fontMetrics
-            val textWidth = paint.measureText(text)
-            val textHeight = fm.bottom - fm.top
-            val pad = 8f
-            val labelWidth = textWidth + 2 * pad
-            val labelHeight = textHeight + 2 * pad
-            var labelLeft = if (centered) (viewWidth - labelWidth) / 2 else anchorLeft
-            var labelTop = if (centered) (viewHeight - labelHeight) / 2 else anchorTop - labelHeight
-            var labelRight = labelLeft + labelWidth
-            var labelBottom = labelTop + labelHeight
-
-            if (labelTop < 0) {
-                labelTop = anchorTop
-                labelBottom = labelTop + labelHeight
-            }
-            if (labelLeft < 0) {
-                labelLeft = 0f
-                labelRight = labelWidth
-            }
-            if (labelRight > viewWidth) {
-                labelRight = viewWidth
-                labelLeft = maxOf(0f, anchorRight - labelWidth)
-            }
-            if (labelBottom > viewHeight) {
-                labelBottom = viewHeight
-                labelTop = labelBottom - labelHeight
-            }
-
-            val bgRect = RectF(labelLeft, labelTop, labelRight, labelBottom)
-            paint.style = Paint.Style.FILL
-            paint.color = color
-            canvas.drawRoundRect(bgRect, BOX_CORNER_RADIUS, BOX_CORNER_RADIUS, paint)
-
-            paint.color = Color.WHITE
-            val centerY = (bgRect.top + bgRect.bottom) / 2
-            val baseline = centerY - (fm.descent + fm.ascent) / 2
-            canvas.drawText(text, bgRect.left + pad, baseline, paint)
+            // Disabled: The user requested only bounding boxes, no labels
         }
 
         init {
