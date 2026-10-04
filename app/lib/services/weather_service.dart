@@ -21,7 +21,7 @@ class WeatherCondition {
 }
 
 class WeatherService {
-  final String _apiKey = const String.fromEnvironment('WEATHER_API_KEY');
+  final String _apiKey = const String.fromEnvironment('WEATHER_API_KEY', defaultValue: '80d1a427277577b25e9c3d9e0412ee41');
   
   WeatherCondition? _cachedWeather;
   double? _lastLat;

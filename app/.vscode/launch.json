@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "ContextDrive App",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "args": [
+                "--dart-define",
+                "WEATHER_API_KEY=80d1a427277577b25e9c3d9e0412ee41"
+            ]
+        }
+    ]
+}
