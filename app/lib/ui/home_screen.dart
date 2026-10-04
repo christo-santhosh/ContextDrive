@@ -268,6 +268,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       appBar: AppBar(
         title: const Text('ContextDrive'),
+        actions: [
+          IconButton(
+            tooltip: 'Recent risk alerts',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: _showRecentAlerts,
+          ),
+        ],
       ),
       body: Consumer<AppStateModel>(
         builder: (context, appState, _) {
@@ -282,8 +289,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       builder: (context, riskManager, child) {
         final ctx = riskManager.contextVector;
         
-        String weatherStr = "Checking...";
-        IconData weatherIcon = Icons.cloud;
+        String weatherStr = "Weather off";
+        IconData weatherIcon = Icons.cloud_off_outlined;
         
         if (ctx.isWeatherAvailable) {
           weatherStr = ctx.isRaining ? "Raining" : "Clear";
@@ -306,6 +313,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               text: timeStr,
               isLandscape: isLandscape,
             ),
+            _buildVoiceControl(riskManager, isLandscape),
           ],
         );
       },
@@ -391,8 +399,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
         final ctx = riskManager.contextVector;
-        final proximityStr = ctx.closestVehicleDistance < 0.2 ? "Very Near" 
-          : ctx.closestVehicleDistance < 0.5 ? "Near" : "Clear";
+        final vehicleProximity = ctx.closestVehicleDistance < 0.2
+            ? 'Vehicle: very near'
+            : ctx.closestVehicleDistance < 0.5
+                ? 'Vehicle: near'
+                : 'Vehicle: clear';
+        final vulnerableRoadUserProximity =
+            ctx.closestVulnerableRoadUserDistance < 0.2
+                ? 'Road user: very near'
+                : ctx.closestVulnerableRoadUserDistance < 0.5
+                    ? 'Road user: near'
+                    : null;
+        final riskFocus = vulnerableRoadUserProximity ?? vehicleProximity;
           
         return Container(
           padding: EdgeInsets.all(isLandscape ? 8 : 16),
@@ -407,8 +425,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildTelemetryRow("Vehicles", "${ctx.nearbyVehicles}", Icons.directions_car, isLandscape),
-                _buildTelemetryRow("Target", proximityStr, Icons.radar, isLandscape),
+                _buildTelemetryRow(
+                  "Vulnerable users",
+                  "${ctx.nearbyVulnerableRoadUsers}",
+                  Icons.directions_walk_outlined,
+                  isLandscape,
+                ),
+                _buildTelemetryRow("Risk focus", riskFocus, Icons.radar, isLandscape),
                 _buildTelemetryRow("Closing", ctx.isClosingIn ? "Yes" : "No", Icons.speed, isLandscape),
+                _buildTelemetryRow(
+                  "GPS",
+                  ctx.currentSpeed != null ? "Valid" : "Waiting",
+                  Icons.location_on_outlined,
+                  isLandscape,
+                ),
+                _buildTelemetryRow(
+                  "Road limit",
+                  ctx.currentSpeedLimit != null ? "${ctx.currentSpeedLimit} km/h" : "Unavailable",
+                  Icons.speed_outlined,
+                  isLandscape,
+                ),
               ],
             ),
           ),
@@ -456,6 +492,113 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildVoiceControl(RiskManager riskManager, bool isLandscape) {
+    final enabled = riskManager.voiceAlertsEnabled;
+    return Tooltip(
+      message: enabled ? 'Voice alerts on' : 'Voice alerts off',
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF161618),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: enabled ? Colors.blueAccent.withValues(alpha: 0.7) : Colors.white10,
+          ),
+        ),
+        child: IconButton(
+          visualDensity: VisualDensity.compact,
+          onPressed: () => riskManager.setVoiceAlertsEnabled(!enabled),
+          icon: Icon(
+            enabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+            color: enabled ? Colors.blueAccent : Colors.white54,
+            size: isLandscape ? 18 : 22,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showRecentAlerts() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF161618),
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final riskManager = sheetContext.read<RiskManager>();
+        final alerts = riskManager.recentAlerts;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: alerts.isEmpty
+                ? const SizedBox(
+                    height: 180,
+                    child: Center(
+                      child: Text(
+                        'No elevated-risk events in this session',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Recent risk alerts',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              riskManager.clearRecentAlerts();
+                              Navigator.of(sheetContext).pop();
+                            },
+                            child: const Text('Clear'),
+                          ),
+                        ],
+                      ),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: alerts.length,
+                          separatorBuilder: (_, _) =>
+                              const Divider(color: Colors.white12),
+                          itemBuilder: (context, index) {
+                            final event = alerts[index];
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                _riskIcon(event.level),
+                                color: _riskColor(event.level),
+                              ),
+                              title: Text(
+                                event.reason,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${_formatTime(event.timestamp)} · ${event.recommendation}',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildRiskStatusRing({required bool isLandscape}) {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
@@ -492,21 +635,110 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Icon(_riskIcon(assessment.level), color: Colors.white, size: isLandscape ? 24 : 30),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'DRIVING RISK',
+                          style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12, fontWeight: FontWeight.w700, letterSpacing: 1.0),
+                        ),
+                        Text(
+                          _riskTitle(assessment.level),
+                          style: TextStyle(color: Colors.white, fontSize: isLandscape ? 17 : 20, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    riskManager.voiceAlertsEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                    color: Colors.white70,
+                    size: isLandscape ? 18 : 20,
+                  ),
+                ],
+              ),
+              if (assessment.previousLevel != null && assessment.previousLevel != assessment.level) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Changed from ${assessment.previousLevel!.name.toUpperCase()} at ${assessment.raisedAt?.hour.toString().padLeft(2, '0')}:${assessment.raisedAt?.minute.toString().padLeft(2, '0')}:${assessment.raisedAt?.second.toString().padLeft(2, '0')}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12, fontStyle: FontStyle.italic)
+                ),
+              ],
+              const SizedBox(height: 8),
               Text(
-                'SYSTEM STATUS: ${assessment.level.name.toUpperCase()}', 
-                style: TextStyle(color: Colors.white, fontSize: isLandscape ? 16 : 18, fontWeight: FontWeight.w900, letterSpacing: 1.0)
+                'Why: ${assessment.howExplanation}',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
-              Text(assessment.recommendation, style: TextStyle(color: Colors.white, fontSize: isLandscape ? 14 : 16, fontWeight: FontWeight.w600)),
-              if (!isLandscape) ...[
+              if (assessment.primaryReason.isNotEmpty) ...[
+                Text('Observed: ${assessment.primaryReason}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                if (assessment.evidenceReasons.isNotEmpty)
+                  Text('Evidence: ${assessment.evidenceReasons.join(" · ")}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 4),
-                Text(assessment.howExplanation, style: const TextStyle(color: Colors.white70, fontSize: 13)),
               ],
+              if (!isLandscape && assessment.contextModifiers.isNotEmpty) ...[
+                Text('Context: ${assessment.contextModifiers.join(" · ")}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                const SizedBox(height: 4),
+              ],
+              Text('Advice: ${assessment.recommendation}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              if (!isLandscape)
+                Text('Data: ${assessment.dataQuality.join(" · ")}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
             ],
           ),
         );
       },
     );
+  }
+
+  String _riskTitle(RiskLevel level) {
+    switch (level) {
+      case RiskLevel.high:
+        return 'HIGH RISK';
+      case RiskLevel.moderate:
+        return 'CAUTION';
+      case RiskLevel.low:
+        return 'MONITORING';
+      case RiskLevel.limited:
+        return 'LIMITED DATA';
+    }
+  }
+
+  IconData _riskIcon(RiskLevel level) {
+    switch (level) {
+      case RiskLevel.high:
+        return Icons.warning_amber_rounded;
+      case RiskLevel.moderate:
+        return Icons.warning_rounded;
+      case RiskLevel.low:
+        return Icons.verified_user_outlined;
+      case RiskLevel.limited:
+        return Icons.sensors_off_outlined;
+    }
+  }
+
+  Color _riskColor(RiskLevel level) {
+    switch (level) {
+      case RiskLevel.high:
+        return Colors.redAccent;
+      case RiskLevel.moderate:
+        return Colors.orangeAccent;
+      case RiskLevel.low:
+        return Colors.greenAccent;
+      case RiskLevel.limited:
+        return Colors.grey;
+    }
+  }
+
+  String _formatTime(DateTime time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    final second = time.second.toString().padLeft(2, '0');
+    return '$hour:$minute:$second';
   }
 }
 

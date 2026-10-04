@@ -35,6 +35,7 @@ class ContextDriveApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'ContextDrive',
+        debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
           primaryColor: Colors.blueAccent,
         ),

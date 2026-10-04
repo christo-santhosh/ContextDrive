@@ -7,8 +7,12 @@ class ImuService {
   bool _isErratic = false;
   DateTime? _erraticUntil;
 
+  final bool _isCalibrated = false;
+
   /// Returns true if harsh braking or swerving was detected recently (within last 3 seconds)
   bool get isErratic {
+    if (!_isCalibrated) return false;
+
     if (_erraticUntil != null && DateTime.now().isAfter(_erraticUntil!)) {
       _isErratic = false;
       _erraticUntil = null;
@@ -21,6 +25,9 @@ class ImuService {
     _subscription = userAccelerometerEventStream().listen((UserAccelerometerEvent event) {
       // Calculate the magnitude of the 3D acceleration vector
       double magnitude = sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
+
+      // Disable IMU risk evaluation until phone mount calibration is implemented
+      if (!_isCalibrated) return;
       
       // Threshold: 4.5 m/s^2 (~0.45 G's) is universally considered harsh/aggressive driving
       if (magnitude > 4.5) {

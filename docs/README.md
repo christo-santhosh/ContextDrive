@@ -1,9 +1,9 @@
 # ContextDrive MVP
 
-ContextDrive is a mobile driver-assistance prototype utilizing real-time computer vision (TensorFlow Lite) to detect and track vehicles, calculate estimated proximity and closing rates, and perform risk assessments based on contextual factors like GPS speed and weather.
+ContextDrive is an Android driver-assistance prototype that uses real-time YOLO26n computer vision to detect and track road vehicles, people, and bicycles; estimate relative visual proximity and approach; and perform explainable rule-based risk assessments using GPS speed and available weather context. Elevated-risk changes can trigger an Android text-to-speech warning and are retained in a short, in-memory session history.
 
 > [!WARNING]
-> This application is a **prototype assistance tool**, not a certified safety system. Do not rely on this application to prevent collisions. Estimated visual proximity is not a substitute for physical distance measurements like radar or lidar.
+> This application is a **prototype assistance tool**, not a certified safety system. Do not rely on this application to prevent collisions. It uses relative bounding-box size and growth as visual cues, not physical distance measurements, radar, lidar, or time-to-collision estimates.
 
 ## Supported Platform
 - **Primary MVP Target:** Android physical devices (A14+ recommended)
@@ -15,9 +15,10 @@ ContextDrive is a mobile driver-assistance prototype utilizing real-time compute
 - **Network/Internet:** Required to fetch live weather context.
 
 ## ML Model Details
-- **Model:** Ultralytics YOLOv8 (yolo26n via ultralytics_yolo 0.6.15)
+- **Model:** Ultralytics YOLO26n (`yolo26n` via `ultralytics_yolo`)
 - **Input:** 640x640 RGB (variable based on YOLO export)
 - **Labels:** 80 COCO classes. The system filters for vulnerable road users (person, bicycle) and road vehicles (car, truck, bus, motorcycle).
+- **Risk outputs:** low, moderate, high, or limited-data status with the observed trigger, visual evidence, available context, a recommended action, and optional voice alerts.
 
 ## How to Run
 
@@ -29,6 +30,12 @@ ContextDrive is a mobile driver-assistance prototype utilizing real-time compute
    flutter pub get
    flutter run
    ```
+
+## Demo and Testing Guide
+
+For the presentation script, device test plan, feature explanations, risk-rule
+reference, and known limitations, see
+[DEMO_AND_TESTING_GUIDE.md](DEMO_AND_TESTING_GUIDE.md).
 
 
 ## Configuration

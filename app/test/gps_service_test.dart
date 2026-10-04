@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
-import '../lib/services/gps_service.dart';
+import 'package:app/services/gps_service.dart';
 
 void main() {
   group('GpsService Speed Filtering', () {
