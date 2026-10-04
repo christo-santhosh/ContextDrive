@@ -46,26 +46,5 @@ void main() {
     expect(lowAssessment.level, RiskLevel.low);
   });
 
-  test('Risk engine prioritizes a very near vulnerable road user', () {
-    final assessment = RiskEngine().assessRisk(
-      ContextVector(
-        currentSpeed: 30.0,
-        currentSpeedLimit: 50,
-        isRaining: false,
-        isNight: false,
-        visibility: 10000,
-        isWeatherAvailable: true,
-        nearbyVehicles: 0,
-        closestVehicleDistance: 1.0,
-        isClosingIn: false,
-        nearbyVulnerableRoadUsers: 1,
-        closestVulnerableRoadUserDistance: 0.1,
-        isVulnerableRoadUserClosing: true,
-      ),
-    );
 
-    expect(assessment.level, RiskLevel.high);
-    expect(assessment.primaryReason, contains('Vulnerable road user'));
-    expect(assessment.recommendation, contains('Slow down'));
-  });
 }

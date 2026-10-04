@@ -2,7 +2,6 @@ import 'dart:ui';
 
 enum RoadObjectType {
   roadVehicle,
-  vulnerableRoadUser,
   ignored,
 }
 

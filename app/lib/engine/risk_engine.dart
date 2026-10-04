@@ -37,11 +37,7 @@ class RiskEngine {
     bool poorVisibility = context.isNight || (context.isWeatherAvailable && (context.isRaining || context.visibility < 1000));
     bool isVeryNear = context.closestVehicleDistance <= 0.1;
     bool isNear = context.closestVehicleDistance <= 0.3 && !isVeryNear;
-    bool vulnerableRoadUserVeryNear =
-        context.closestVulnerableRoadUserDistance <= 0.1;
-    bool vulnerableRoadUserNear =
-        context.closestVulnerableRoadUserDistance <= 0.3 &&
-            !vulnerableRoadUserVeryNear;
+
 
     bool isSpeeding = hasSpeed && context.currentSpeedLimit != null && 
                       context.currentSpeed! > (context.currentSpeedLimit! + 10);
@@ -55,31 +51,6 @@ class RiskEngine {
       primaryReason = "Erratic driving near vehicles";
       evidenceReasons.add("IMU detected event");
       evidenceReasons.add("${context.nearbyVehicles} vehicles tracked");
-    } else if (vulnerableRoadUserVeryNear &&
-        context.isVulnerableRoadUserClosing) {
-      level = RiskLevel.high;
-      how = "A vulnerable road user is very near and visually approaching.";
-      why = "A person or cyclist has little physical protection in a conflict.";
-      recommendation = "Slow down and create more space.";
-      primaryReason = "Vulnerable road user very near and closing";
-      evidenceReasons.add(
-        "${context.nearbyVulnerableRoadUsers} vulnerable road user(s) tracked",
-      );
-      evidenceReasons.add("Tracked object area is increasing");
-    } else if (vulnerableRoadUserVeryNear ||
-        (vulnerableRoadUserNear &&
-            context.isVulnerableRoadUserClosing)) {
-      level = RiskLevel.moderate;
-      how = "A vulnerable road user is near the vehicle path.";
-      why = "Reduced separation leaves less room to react safely.";
-      recommendation = "Reduce speed and maintain a wider safety margin.";
-      primaryReason = "Vulnerable road user nearby";
-      evidenceReasons.add(
-        "${context.nearbyVulnerableRoadUsers} vulnerable road user(s) tracked",
-      );
-      if (context.isVulnerableRoadUserClosing) {
-        evidenceReasons.add("Tracked object area is increasing");
-      }
     } else if (isVeryNear && context.isClosingIn) {
       level = RiskLevel.high;
       how = "Vehicle ahead is very near and visually approaching.";

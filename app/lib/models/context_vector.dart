@@ -8,9 +8,6 @@ class ContextVector {
   final int nearbyVehicles;
   final double closestVehicleDistance; // smaller = closer
   final bool isClosingIn; // true if the vehicle is getting closer
-  final int nearbyVulnerableRoadUsers;
-  final double closestVulnerableRoadUserDistance;
-  final bool isVulnerableRoadUserClosing;
   final bool isErraticDriving; // true if harsh braking or swerving detected
   final String? gpsQualityReason;
 
@@ -24,9 +21,6 @@ class ContextVector {
     required this.nearbyVehicles,
     required this.closestVehicleDistance,
     required this.isClosingIn,
-    this.nearbyVulnerableRoadUsers = 0,
-    this.closestVulnerableRoadUserDistance = 1.0,
-    this.isVulnerableRoadUserClosing = false,
     this.isErraticDriving = false,
     this.gpsQualityReason,
   });

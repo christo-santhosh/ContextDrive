@@ -58,6 +58,11 @@ class RiskManager extends ChangeNotifier {
   int _consecutiveInvalidReadings = 0;
   bool _isRaining = false;
   int _visibility = 10000;
+
+  // Overrides for testing
+  double? overrideSpeed;
+  bool? overrideIsRaining;
+  bool? overrideIsNight;
   List<TrackedObject> _currentTracks = [];
 
   DateTime? _elevatedStartTime;
@@ -147,15 +152,17 @@ class RiskManager extends ChangeNotifier {
       speedForRisk = null; // Stale or unavailable
       gpsReason = "Stale GNSS timestamp";
     }
+    
+    if (overrideSpeed != null) {
+      speedForRisk = overrideSpeed;
+      gpsReason = "Override";
+    }
 
-    final isNight = _timeContextService.isNight(now);
+    final isNight = overrideIsNight ?? _timeContextService.isNight(now);
 
     double closestDist = 1.0;
     int nearbyVehiclesCount = 0;
     TrackedObject? closestTrack;
-    double closestVulnerableRoadUserDistance = 1.0;
-    int nearbyVulnerableRoadUsersCount = 0;
-    TrackedObject? closestVulnerableRoadUser;
     
     for (var track in _currentTracks) {
       final estimatedDistance = _relativeDistance(track.proximity);
@@ -165,37 +172,30 @@ class RiskManager extends ChangeNotifier {
           closestDist = estimatedDistance;
           closestTrack = track;
         }
-      } else if (track.type == RoadObjectType.vulnerableRoadUser) {
-        nearbyVulnerableRoadUsersCount++;
-        if (estimatedDistance < closestVulnerableRoadUserDistance) {
-          closestVulnerableRoadUserDistance = estimatedDistance;
-          closestVulnerableRoadUser = track;
-        }
       }
     }
 
     bool isClosingIn = closestTrack?.closingRate == ClosingRate.closing;
-    bool isVulnerableRoadUserClosing =
-        closestVulnerableRoadUser?.closingRate == ClosingRate.closing;
 
     bool weatherAvailable = _isWeatherAvailable;
     if (_weatherLastUpdated != null && now.difference(_weatherLastUpdated!).inMinutes > 30) {
       weatherAvailable = false;
     }
+    
+    if (overrideIsRaining != null) {
+      weatherAvailable = true;
+    }
 
     _lastContextVector = ContextVector(
       currentSpeed: speedForRisk,
       currentSpeedLimit: _speedLimitService.currentSpeedLimit,
-      isRaining: _isRaining,
+      isRaining: overrideIsRaining ?? _isRaining,
       isNight: isNight,
-      visibility: _visibility,
+      visibility: overrideIsRaining != null && overrideIsRaining! ? 500 : _visibility,
       isWeatherAvailable: weatherAvailable,
       nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
       isClosingIn: isClosingIn,
-      nearbyVulnerableRoadUsers: nearbyVulnerableRoadUsersCount,
-      closestVulnerableRoadUserDistance: closestVulnerableRoadUserDistance,
-      isVulnerableRoadUserClosing: isVulnerableRoadUserClosing,
       isErraticDriving: _imuService.isErratic,
       gpsQualityReason: gpsReason,
     );
@@ -213,7 +213,6 @@ class RiskManager extends ChangeNotifier {
               previousLevel: _currentAssessment.level,
             );
             _recordAlert(_currentAssessment);
-            notifyListeners();
             _riskAlertService.announce(
               _currentAssessment,
               enabled: _voiceAlertsEnabled,
@@ -224,7 +223,6 @@ class RiskManager extends ChangeNotifier {
               previousLevel: _currentAssessment.previousLevel,
             );
             _recordAlert(_currentAssessment);
-            notifyListeners();
             _riskAlertService.announce(
               _currentAssessment,
               enabled: _voiceAlertsEnabled,
@@ -245,7 +243,7 @@ class RiskManager extends ChangeNotifier {
       bool canDropRisk = _cooldownEndTime == null || now.isAfter(_cooldownEndTime!);
       
       // Clear rule: if no vehicles are nearby at all, we bypass cooldown to drop risk immediately
-      if (nearbyVehiclesCount + nearbyVulnerableRoadUsersCount == 0) {
+      if (nearbyVehiclesCount == 0) {
         canDropRisk = true;
         _cooldownEndTime = null;
       }
@@ -255,10 +253,12 @@ class RiskManager extends ChangeNotifier {
             _currentAssessment.howExplanation != newAssessment.howExplanation) {
           _currentAssessment = newAssessment;
           _riskAlertService.clearActiveAlert();
-          notifyListeners();
         }
       }
     }
+    
+    // Always notify listeners so the UI (speedometer, weather, etc.) updates with the latest context vector
+    notifyListeners();
   }
 
   double _relativeDistance(ProximityCategory proximity) {

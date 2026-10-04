@@ -7,6 +7,7 @@ import '../models/detected_object.dart';
 import '../models/app_state.dart';
 import '../models/context_vector.dart';
 import '../managers/risk_manager.dart';
+import 'debug_settings_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -241,9 +242,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           List<DetectedObject> mappedDetections = [];
           for (var r in results) {
             RoadObjectType type = RoadObjectType.ignored;
-            if (r.className == 'person' || r.className == 'bicycle') {
-              type = RoadObjectType.vulnerableRoadUser;
-            } else if (r.className == 'car' || r.className == 'motorcycle' || 
+            if (r.className == 'car' || r.className == 'motorcycle' || 
                        r.className == 'bus' || r.className == 'truck') {
               type = RoadObjectType.roadVehicle;
             }
@@ -269,6 +268,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('ContextDrive'),
         actions: [
+          IconButton(
+            tooltip: 'Debug Settings',
+            icon: const Icon(Icons.bug_report),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                isScrollControlled: true,
+                builder: (context) => const DebugSettingsSheet(),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Recent risk alerts',
             icon: const Icon(Icons.history_rounded),
@@ -404,13 +415,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : ctx.closestVehicleDistance < 0.5
                 ? 'Vehicle: near'
                 : 'Vehicle: clear';
-        final vulnerableRoadUserProximity =
-            ctx.closestVulnerableRoadUserDistance < 0.2
-                ? 'Road user: very near'
-                : ctx.closestVulnerableRoadUserDistance < 0.5
-                    ? 'Road user: near'
-                    : null;
-        final riskFocus = vulnerableRoadUserProximity ?? vehicleProximity;
+        final riskFocus = vehicleProximity;
           
         return Container(
           padding: EdgeInsets.all(isLandscape ? 8 : 16),
@@ -425,12 +430,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildTelemetryRow("Vehicles", "${ctx.nearbyVehicles}", Icons.directions_car, isLandscape),
-                _buildTelemetryRow(
-                  "Vulnerable users",
-                  "${ctx.nearbyVulnerableRoadUsers}",
-                  Icons.directions_walk_outlined,
-                  isLandscape,
-                ),
+
                 _buildTelemetryRow("Risk focus", riskFocus, Icons.radar, isLandscape),
                 _buildTelemetryRow("Closing", ctx.isClosingIn ? "Yes" : "No", Icons.speed, isLandscape),
                 _buildTelemetryRow(
