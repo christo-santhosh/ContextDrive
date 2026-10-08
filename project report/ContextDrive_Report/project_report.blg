@@ -29,11 +29,13 @@ Reallocating 'name_of_file' (item size: 1) to 22 items.
 A level-1 auxiliary file: Chapter5/chapter5.aux
 Reallocating 'name_of_file' (item size: 1) to 22 items.
 A level-1 auxiliary file: Chapter6/chapter6.aux
+Reallocating 'name_of_file' (item size: 1) to 22 items.
+A level-1 auxiliary file: Chapter7/chapter7.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: appendix/appendixA.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: appendix/appendixB.aux
-Illegal, another \bibstyle command---line 26 of file project_report.aux
+Illegal, another \bibstyle command---line 27 of file project_report.aux
  : \bibstyle
  :          {IEEEtran}
 I'm skipping whatever remains of this command
@@ -51,7 +53,7 @@ Database file #1: reference/refs.bib
 Done.
 You've used 5 entries,
             4087 wiz_defined-function locations,
-            871 strings with 8779 characters,
+            872 strings with 8800 characters,
 and the built_in function-call counts, 3913 in all, are:
 = -- 338
 > -- 97
