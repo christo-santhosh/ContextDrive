@@ -114,13 +114,18 @@ class CameraManager:
         # Rigid attachments prevent PhysX SpringArm calculation conflicts
         self.transforms = [
             (
-                "3rd-Person Chase View",
-                carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15.0)),
+                "1st-Person Dashboard View",
+                carla.Transform(carla.Location(x=1.2, y=0.0, z=1.3), carla.Rotation(pitch=-4.0)),
                 carla.AttachmentType.Rigid
             ),
             (
-                "1st-Person Dashboard View",
-                carla.Transform(carla.Location(x=1.2, z=1.3), carla.Rotation(pitch=-5.0)),
+                "Driver POV (Behind Wheel)",
+                carla.Transform(carla.Location(x=0.4, y=-0.4, z=1.3), carla.Rotation(pitch=-4.0)),
+                carla.AttachmentType.Rigid
+            ),
+            (
+                "3rd-Person Chase View",
+                carla.Transform(carla.Location(x=-5.5, y=0.0, z=2.8), carla.Rotation(pitch=-15.0)),
                 carla.AttachmentType.Rigid
             ),
         ]
@@ -278,18 +283,18 @@ def main():
     camera_manager = None
 
     try:
-        # ── Camera ──
-        print("[STEP] Attaching camera...")
-        camera_manager = CameraManager(ego_vehicle, world, VIEW_WIDTH, VIEW_HEIGHT, VIEW_FOV)
+        # ── Wait for first simulation tick so ego vehicle is fully initialized ──
+        print("[STEP] Waiting for simulation tick...")
+        world.wait_for_tick(seconds=5.0)
 
         # ── Position CARLA server Spectator to vehicle ──
         spectator = world.get_spectator()
         update_spectator_to_vehicle(spectator, ego_vehicle, distance=10.0, height=5.0)
         print("[OK] CARLA server spectator placed at vehicle.")
 
-        # ── Wait for first simulation tick ──
-        print("[STEP] Waiting for simulation tick...")
-        world.wait_for_tick(seconds=5.0)
+        # ── Camera ──
+        print("[STEP] Attaching camera...")
+        camera_manager = CameraManager(ego_vehicle, world, VIEW_WIDTH, VIEW_HEIGHT, VIEW_FOV)
 
         print("\n=======================================================")
         print(" ContextDrive -- Manual Driving Rig Active")
@@ -303,7 +308,7 @@ def main():
         print("   A / D       : Steering (smooth self-centering)")
         print("   Space       : Handbrake")
         print("   R           : Toggle Reverse Gear")
-        print("   Tab / V     : Toggle Camera View (Chase Cam <-> Dashboard)")
+        print("   Tab / V     : Toggle Camera (Dashboard -> Driver POV -> Chase Cam)")
         print("   F           : Toggle Spectator Window Tracking")
         print("   Esc         : Quit")
         print("=======================================================\n")
