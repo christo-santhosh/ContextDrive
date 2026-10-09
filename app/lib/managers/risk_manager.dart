@@ -59,10 +59,12 @@ class RiskManager extends ChangeNotifier {
   bool _isRaining = false;
   int _visibility = 10000;
 
-  // Overrides for testing
+  // Overrides for testing / CARLA demo mode
   double? overrideSpeed;
   bool? overrideIsRaining;
   bool? overrideIsNight;
+  bool? overrideIsErratic;
+  int? overrideSpeedLimit;
   List<TrackedObject> _currentTracks = [];
 
   DateTime? _elevatedStartTime;
@@ -188,7 +190,7 @@ class RiskManager extends ChangeNotifier {
 
     _lastContextVector = ContextVector(
       currentSpeed: speedForRisk,
-      currentSpeedLimit: _speedLimitService.currentSpeedLimit,
+      currentSpeedLimit: overrideSpeedLimit ?? _speedLimitService.currentSpeedLimit,
       isRaining: overrideIsRaining ?? _isRaining,
       isNight: isNight,
       visibility: overrideIsRaining != null && overrideIsRaining! ? 500 : _visibility,
@@ -196,7 +198,7 @@ class RiskManager extends ChangeNotifier {
       nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
       isClosingIn: isClosingIn,
-      isErraticDriving: _imuService.isErratic,
+      isErraticDriving: overrideIsErratic ?? _imuService.isErratic,
       gpsQualityReason: gpsReason,
     );
 

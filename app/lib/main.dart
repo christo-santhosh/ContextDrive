@@ -4,6 +4,7 @@ import 'ui/home_screen.dart';
 import 'services/gps_service.dart';
 import 'services/weather_service.dart';
 import 'services/time_context_service.dart';
+import 'services/carla_demo_service.dart';
 import 'managers/risk_manager.dart';
 import 'models/app_state.dart';
 
@@ -31,6 +32,16 @@ class ContextDriveApp extends StatelessWidget {
             ctx.read<TimeContextService>(),
           ),
           update: (ctx, gps, weather, time, previous) => previous ?? RiskManager(gps, weather, time),
+        ),
+
+        // CARLA Demo Service — attached to RiskManager so it can inject overrides
+        ChangeNotifierProxyProvider<RiskManager, CarlaDemoService>(
+          create: (_) => CarlaDemoService(),
+          update: (_, riskManager, previous) {
+            final service = previous ?? CarlaDemoService();
+            service.attachRiskManager(riskManager);
+            return service;
+          },
         ),
       ],
       child: MaterialApp(
