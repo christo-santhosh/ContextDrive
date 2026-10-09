@@ -23,25 +23,17 @@ class ContextDriveApp extends StatelessWidget {
         Provider<GpsService>(create: (_) => GpsService()),
         Provider<WeatherService>(create: (_) => WeatherService()),
         Provider<TimeContextService>(create: (_) => TimeContextService()),
-
+        ChangeNotifierProvider<CarlaDemoService>(create: (_) => CarlaDemoService()),
         ChangeNotifierProvider<AppStateModel>(create: (_) => AppStateModel()),
-        ChangeNotifierProxyProvider3<GpsService, WeatherService, TimeContextService, RiskManager>(
+        
+        ChangeNotifierProxyProvider4<GpsService, WeatherService, TimeContextService, CarlaDemoService, RiskManager>(
           create: (ctx) => RiskManager(
             ctx.read<GpsService>(),
             ctx.read<WeatherService>(),
             ctx.read<TimeContextService>(),
+            ctx.read<CarlaDemoService>(),
           ),
-          update: (ctx, gps, weather, time, previous) => previous ?? RiskManager(gps, weather, time),
-        ),
-
-        // CARLA Demo Service — attached to RiskManager so it can inject overrides
-        ChangeNotifierProxyProvider<RiskManager, CarlaDemoService>(
-          create: (_) => CarlaDemoService(),
-          update: (_, riskManager, previous) {
-            final service = previous ?? CarlaDemoService();
-            service.attachRiskManager(riskManager);
-            return service;
-          },
+          update: (ctx, gps, weather, time, carla, previous) => previous ?? RiskManager(gps, weather, time, carla),
         ),
       ],
       child: MaterialApp(
