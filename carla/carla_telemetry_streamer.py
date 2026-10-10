@@ -2,6 +2,11 @@
 ContextDrive — CARLA Raw Telemetry Bridge
 =========================================
 This script bridges a live CARLA simulation with the ContextDrive app.
+
+NOTE: This is a legacy raw bridge. It does not send the v4 signed
+`longitudinalAccelMps2` contract, so the app correctly reports CARLA motion as
+unknown. Use `manual_driving_rig.py --stream` for v4 braking/acceleration
+demonstrations.
 Strict compliance: Extracts ONLY physical sensor measurements (velocity, 
 geolocation, raw acceleration) from the simulated ego vehicle.
 

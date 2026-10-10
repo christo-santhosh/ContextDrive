@@ -1,5 +1,11 @@
 # ContextDrive Engine Architecture & Alert System
 
+> **Superseded for the active implementation:** this historical description
+> documents the pre-v4, first-match `isErratic` design. The implemented policy,
+> signed CARLA longitudinal acceleration contract, thresholds, and demo matrix
+> are in [`docs/RISK_ENGINE_V4.md`](docs/RISK_ENGINE_V4.md). Do not use this
+> document to make claims about current motion classification or risk rules.
+
 This document outlines the end-to-end architecture of the ContextDrive safety engine, detailing how raw inputs are collected, processed into a Context Vector, evaluated for risk, and ultimately delivered as alerts to the driver.
 
 ---

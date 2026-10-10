@@ -190,8 +190,8 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
 
             const SizedBox(height: 16),
 
-            // Erratic Driving Override
-            const Text('Erratic Driving (IMU Simulation)', style: TextStyle(color: Colors.white70)),
+            // This is explicitly a simulator input, not physical IMU evidence.
+            const Text('Hard-braking simulation (debug only)', style: TextStyle(color: Colors.white70)),
             Row(
               children: [
                 Radio<bool?>(
@@ -213,7 +213,7 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
                   groupValue: _isErratic,
                   onChanged: (val) => setState(() => _isErratic = val),
                 ),
-                const Text('Erratic', style: TextStyle(color: Colors.redAccent)),
+                const Text('Hard braking', style: TextStyle(color: Colors.redAccent)),
               ],
             ),
             

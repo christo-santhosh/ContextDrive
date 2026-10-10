@@ -17,8 +17,7 @@ class RiskAlertService {
     bool force = false,
   }) async {
     if (!enabled ||
-        (assessment.level != RiskLevel.moderate &&
-            assessment.level != RiskLevel.high)) {
+        (!assessment.hasHazard || assessment.isStale)) {
       return;
     }
 
@@ -29,7 +28,8 @@ class RiskAlertService {
     final isEscalation = _lastAnnouncedLevel == null ||
         _severity(assessment.level) > _severity(_lastAnnouncedLevel!);
     final reasonChanged = reason != _lastAnnouncedReason;
-    final cooldown = assessment.level == RiskLevel.high
+    final cooldown = (assessment.level == RiskLevel.high ||
+            assessment.level == RiskLevel.critical)
         ? const Duration(seconds: 6)
         : const Duration(seconds: 12);
     final recentlyAnnounced = _lastAnnouncementAt != null &&
@@ -71,19 +71,21 @@ class RiskAlertService {
     switch (level) {
       case RiskLevel.low:
         return 0;
-      case RiskLevel.limited:
-        return 1;
       case RiskLevel.moderate:
-        return 2;
+        return 1;
       case RiskLevel.high:
+        return 2;
+      case RiskLevel.critical:
         return 3;
     }
   }
 
   String _voiceMessage(RiskAssessment assessment) {
-    final prefix = assessment.level == RiskLevel.high
-        ? 'High risk.'
-        : 'Caution.';
+    final prefix = assessment.level == RiskLevel.critical
+        ? 'Critical warning.'
+        : assessment.level == RiskLevel.high
+            ? 'High risk.'
+            : 'Caution.';
     return '$prefix ${assessment.howExplanation} ${assessment.recommendation}';
   }
 }

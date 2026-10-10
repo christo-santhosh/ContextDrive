@@ -21,6 +21,8 @@ import weakref
 import threading
 import uuid
 
+from motion_math import signed_longitudinal_acceleration
+
 import os
 import glob
 
@@ -380,7 +382,18 @@ def main():
                             vel = ego_vehicle.get_velocity()
                             cur_speed = 3.6 * math.sqrt(vel.x**2 + vel.y**2 + vel.z**2)
                             accel = ego_vehicle.get_acceleration()
-                            loc = ego_vehicle.get_transform().location
+                            transform = ego_vehicle.get_transform()
+                            loc = transform.location
+                            # Project world acceleration onto actual direction of
+                            # travel. This is signed: positive accelerates in the
+                            # travel direction; negative decelerates. At very low
+                            # speed the direction is unstable, so report null.
+                            forward = transform.get_forward_vector()
+                            longitudinal_accel = signed_longitudinal_acceleration(
+                                (vel.x, vel.y, vel.z),
+                                (forward.x, forward.y, forward.z),
+                                (accel.x, accel.y, accel.z),
+                            )
                             geo = carla_map.transform_to_geolocation(loc)
 
                             try:
@@ -405,6 +418,7 @@ def main():
                                 "accelX": round(accel.x, 3),
                                 "accelY": round(accel.y, 3),
                                 "accelZ": round(accel.z, 3),
+                                "longitudinalAccelMps2": round(longitudinal_accel, 3) if longitudinal_accel is not None else None,
                                 "scenarioContext": {
                                     "scenarioId": args.scenario,
                                     "isRaining": bool(args.rain),

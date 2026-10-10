@@ -1,150 +1,202 @@
 import '../models/context_vector.dart';
 
-class RiskEngine {
-  RiskAssessment assessRisk(ContextVector context) {
-    RiskLevel level = RiskLevel.low;
-    String how = "Normal driving conditions.";
-    String why = "No configured risk rule is currently triggered by available inputs.";
-    String recommendation = "Continue driving safely.";
-    String primaryReason = "No configured risk rule triggered";
-    List<String> evidenceReasons = [];
-    List<String> contextModifiers = [];
-    List<String> dataQuality = [];
-
-    bool hasSpeed = context.currentSpeed != null;
-    if (hasSpeed) {
-      dataQuality.add("Speed valid");
-    } else {
-      dataQuality.add(context.gpsQualityReason ?? "Speed settling / unavailable");
-    }
-
-    if (context.isWeatherAvailable) {
-      dataQuality.add("Weather current");
-    } else if (context.visibilityCategory == null) {
-      dataQuality.add("Weather unavailable - visibility unknown");
-    }
-
-    if (context.isRaining) {
-      contextModifiers.add("Rain reported");
-    }
-    if (context.isNight) {
-      contextModifiers.add("Night conditions");
-    }
-    if (hasSpeed) {
-      contextModifiers.add("Speed ${context.currentSpeed!.toStringAsFixed(0)} km/h");
-    }
-
-    final visibility = context.visibilityAssessment;
-    final bool poorVisibility = visibility == VisibilityAssessment.poor;
-    if (poorVisibility) {
-      contextModifiers.add("Low visibility");
-    } else if (visibility == VisibilityAssessment.unknown) {
-      contextModifiers.add("Visibility conditions unknown");
-    }
-
-    bool isVeryNear = context.closestVehicleDistance <= 0.1;
-    bool isNear = context.closestVehicleDistance <= 0.3 && !isVeryNear;
-
-    bool isSpeeding = hasSpeed &&
-        context.currentSpeedLimit != null &&
-        context.currentSpeed! > (context.currentSpeedLimit! + 10);
-
-    // Evaluate risk hierarchy (highest to lowest)
-    // Rule 1: High-magnitude motion near tracked vehicle (HIGH)
-    if (context.isErraticDriving && context.nearbyVehicles > 0 && (isVeryNear || isNear)) {
-      level = RiskLevel.high;
-      how = "High-magnitude motion detected while a tracked vehicle is visually proximal.";
-      why = "Abrupt vehicle dynamics combined with proximal traffic creates elevated hazard.";
-      recommendation = "Maintain steady vehicle control and increase clearance.";
-      primaryReason = "High-magnitude motion near tracked vehicle";
-      evidenceReasons.add("High-magnitude motion heuristic active");
-      evidenceReasons.add("Tracked vehicle within proximity threshold");
-    }
-    // Rule 2: Rapid optical approach at close range (HIGH)
-    else if (isVeryNear && context.isClosingIn) {
-      level = RiskLevel.high;
-      how = "Tracked vehicle bounding area exceeds close-proximity threshold and is expanding rapidly.";
-      why = "Forward buffer is minimal and rapidly decreasing.";
-      recommendation = "Increase following distance immediately.";
-      primaryReason = "Rapid optical approach at close range";
-      evidenceReasons.add("Tracked vehicle bounding area exceeds close threshold");
-      evidenceReasons.add("Bounding area growth rate indicates closing in");
-    }
-    // Rule 3: Isolated high-magnitude motion (MODERATE)
-    else if (context.isErraticDriving) {
-      level = RiskLevel.moderate;
-      how = "High-magnitude acceleration detected; direction and cause are not classified.";
-      why = "Elevated acceleration forces reduce vehicle stability margin.";
-      recommendation = "Drive smoothly to maintain vehicle stability.";
-      primaryReason = "High-magnitude motion detected";
-      evidenceReasons.add("High-magnitude motion heuristic active");
-    }
-    // Rule 4: Tracked vehicle closing in at medium range (MODERATE)
-    else if (isNear && context.isClosingIn) {
-      level = RiskLevel.moderate;
-      how = "Tracked vehicle bounding area is growing in view; buffer space is reducing.";
-      why = "Forward visual headway is diminishing.";
-      recommendation = "Monitor road ahead and prepare to decelerate.";
-      primaryReason = "Tracked vehicle closing in";
-      evidenceReasons.add("Tracked vehicle in proximity threshold");
-      evidenceReasons.add("Bounding area growth rate indicates closing in");
-    }
-    // Rule 5: Tracked vehicle at close range (static / not closing in) (MODERATE)
-    else if (isVeryNear) {
-      level = RiskLevel.moderate;
-      how = "Detected vehicle exceeds configured visual-proximity threshold.";
-      why = "Operating with a compact visual headway to tracked vehicle.";
-      recommendation = "Increase following distance.";
-      primaryReason = "Detected vehicle exceeds visual-proximity threshold";
-      evidenceReasons.add("Tracked vehicle bounding area exceeds close threshold");
-    }
-    // Rule 6: High speed in poor visibility (MODERATE)
-    else if (hasSpeed && context.currentSpeed! > 80.0 && poorVisibility) {
-      level = RiskLevel.moderate;
-      how = "Speed exceeds 80 km/h under low visibility or active precipitation.";
-      why = "Stopping sight distance exceeds visual range under reduced visibility.";
-      recommendation = "Reduce speed to match visibility conditions.";
-      primaryReason = "High speed in poor visibility";
-      evidenceReasons.add("Speed exceeds 80 km/h");
-      evidenceReasons.add("Poor visibility conditions active");
-    }
-    // Rule 7: Speed limit exceeded by >10 km/h (MODERATE)
-    else if (isSpeeding) {
-      level = RiskLevel.moderate;
-      how = "Vehicle speed exceeds configured road speed limit by >10 km/h.";
-      why = "Traveling faster than the applicable road speed limit.";
-      recommendation = "Reduce speed to ${context.currentSpeedLimit} km/h.";
-      primaryReason = "Speed limit exceeded by >10 km/h";
-      evidenceReasons.add("Speed ${context.currentSpeed!.toStringAsFixed(0)} km/h vs limit ${context.currentSpeedLimit} km/h");
-    }
-    // Rule 8: Sensor speed unavailable (LIMITED)
-    else if (!hasSpeed) {
-      level = RiskLevel.limited;
-      how = "Sensor data limited.";
-      why = "Speed data is settling, unavailable, or telemetry is disconnected.";
-      recommendation = "Drive with caution; assistance features limited.";
-      primaryReason = "Sensor speed unavailable";
-      evidenceReasons.add(context.gpsQualityReason ?? "Speed data unavailable");
-    }
-    // Rule 9: Nominal driving conditions (LOW)
-    else {
-      level = RiskLevel.low;
-      how = "Normal driving conditions.";
-      why = "No configured risk rule is currently triggered by available inputs.";
-      recommendation = "Continue driving safely.";
-      primaryReason = "No configured risk rule triggered";
-    }
-
-    return RiskAssessment(
-      level: level,
-      howExplanation: how,
-      whyExplanation: why,
-      recommendation: recommendation,
-      primaryReason: primaryReason,
-      evidenceReasons: evidenceReasons,
-      contextModifiers: contextModifiers,
-      dataQuality: dataQuality,
-    );
-  }
+class _Candidate {
+  const _Candidate({required this.severity, required this.name, required this.what, required this.why, required this.action, required this.evidence});
+  final RiskLevel severity;
+  final String name;
+  final String what;
+  final String why;
+  final String action;
+  final List<String> evidence;
 }
 
+/// Deterministic, explainable rule engine. It evaluates all applicable rules,
+/// selects the highest severity for the HUD, and keeps availability separate.
+class RiskEngine {
+  RiskAssessment assessRisk(ContextVector context) {
+    final quality = <String>[];
+    final modifiers = <String>[];
+    final advisories = <String>[];
+    final candidates = <_Candidate>[];
+    final hasSpeed = context.currentSpeed != null;
+
+    if (!context.telemetryFresh) quality.add('Telemetry is stale or disconnected');
+    if (hasSpeed) {
+      quality.add('Speed current');
+      modifiers.add('Speed ${context.currentSpeed!.toStringAsFixed(0)} km/h');
+    } else {
+      quality.add(context.speedQualityReason ?? 'Speed unavailable');
+    }
+    if (context.isWeatherAvailable) {
+      quality.add('Weather current');
+    } else {
+      quality.add(context.weatherQualityReason ?? 'Weather unavailable');
+    }
+    if (context.daylightCondition == DaylightCondition.unknown) {
+      quality.add(context.timeQualityReason ?? 'Time-of-day context unavailable');
+    }
+
+    final poorVisibility = context.visibilityAssessment == VisibilityAssessment.poor;
+    final adverse = poorVisibility || context.isRaining || context.daylightCondition == DaylightCondition.night;
+    switch (context.weatherCategory) {
+      case WeatherCategory.rain:
+        modifiers.add('Rain reported for the current area');
+        advisories.add('Rain is reported for the current area. Wet-road grip may be reduced; drive smoothly and allow more stopping distance.');
+        break;
+      case WeatherCategory.heavyRain:
+        modifiers.add('Heavy rain reported for the current area');
+        advisories.add('Heavy rain or poor visibility is indicated. Reduce speed and increase following distance. If the journey is not essential, consider delaying travel until conditions improve.');
+        break;
+      case WeatherCategory.fog:
+        modifiers.add('Fog or poor visibility reported');
+        advisories.add('Poor visibility is reported. Reduce speed and increase following distance.');
+        break;
+      case WeatherCategory.clear:
+      case WeatherCategory.unknown:
+        break;
+    }
+    if (context.daylightCondition == DaylightCondition.night) {
+      modifiers.add('Night conditions');
+      advisories.add('Night driving conditions. Visibility can be reduced; reduce speed as needed and leave additional following distance.');
+    } else if (context.daylightCondition == DaylightCondition.dawnDusk) {
+      modifiers.add('Dawn/dusk conditions');
+      advisories.add('Dawn or dusk conditions can reduce contrast. Drive at a speed appropriate for visibility.');
+    }
+    if (context.visibilityAssessment == VisibilityAssessment.unknown) modifiers.add('Visibility conditions unknown');
+
+    final veryNear = context.nearbyVehicles > 0 && context.closestVehicleDistance <= RiskThresholds.veryNearVisualProxy;
+    final near = context.nearbyVehicles > 0 && context.closestVehicleDistance <= RiskThresholds.nearVisualProxy;
+    final excess = hasSpeed && context.currentSpeedLimit != null ? context.currentSpeed! - context.currentSpeedLimit! : null;
+    final speeding = excess != null && excess > RiskThresholds.speedLimitModerateExcessKmh;
+    final significantSpeeding = excess != null && excess > RiskThresholds.speedLimitHighExcessKmh;
+
+    // Critical is intentionally narrow: three independent observed inputs and
+    // adverse context. It does not claim a collision probability.
+    if (veryNear && context.isClosingIn && context.motion == MotionClassification.hardBraking && adverse) {
+      candidates.add(const _Candidate(
+        severity: RiskLevel.critical,
+        name: 'Close closing vehicle during hard braking in adverse conditions',
+        what: 'Strong deceleration was detected while a visually very close vehicle was closing in under adverse conditions.',
+        why: 'The forward visual buffer is reducing while braking and visibility or weather conditions may reduce the available margin.',
+        action: 'Focus on the road ahead, brake smoothly if safe, and increase following distance.',
+        evidence: ['Hard braking', 'Very close tracked vehicle', 'Closing visual track', 'Adverse environmental context'],
+      ));
+    }
+    if (veryNear && context.isClosingIn) {
+      candidates.add(const _Candidate(
+        severity: RiskLevel.high,
+        name: 'Rapid optical approach at close range',
+        what: 'A visually very close tracked vehicle is growing in view.',
+        why: 'The forward visual buffer appears minimal and is reducing.',
+        action: 'Increase following distance immediately when safe.',
+        evidence: ['Very close tracked vehicle', 'Bounding-area growth indicates closing'],
+      ));
+    }
+    if (context.motion == MotionClassification.hardBraking) {
+      candidates.add(_Candidate(
+        severity: near ? RiskLevel.high : RiskLevel.moderate,
+        name: near ? 'Hard braking near tracked traffic' : 'Hard braking',
+        what: near ? 'Strong deceleration was detected while a tracked vehicle is visually close.' : 'Strong deceleration was detected.',
+        why: near ? 'Abrupt braking with limited visual headway reduces the available traffic margin.' : 'Strong deceleration can reduce vehicle stability and indicates a sudden change in driving conditions.',
+        action: near ? 'Maintain control, reassess traffic ahead, and increase clearance when safe.' : 'Maintain control and reassess the traffic ahead.',
+        evidence: ['Signed longitudinal acceleration ${context.longitudinalAcceleration?.toStringAsFixed(1) ?? 'available'} m/s²', if (near) 'Tracked vehicle within visual proximity threshold'],
+      ));
+    }
+    if (context.motion == MotionClassification.rapidAcceleration) {
+      final elevated = speeding || poorVisibility;
+      candidates.add(_Candidate(
+        severity: elevated ? RiskLevel.high : RiskLevel.moderate,
+        name: elevated ? 'Rapid acceleration with speed or visibility context' : 'Rapid acceleration',
+        what: 'Strong forward acceleration was detected${speeding ? ' while above the configured speed limit' : poorVisibility ? ' under poor visibility' : ''}.',
+        why: elevated ? 'Rapid acceleration combined with speed or visibility context reduces the available response margin.' : 'Strong acceleration can quickly increase speed and reduce the time available to respond.',
+        action: elevated ? 'Ease off the throttle, check your speed, and leave additional space.' : 'Apply smoother throttle input and check your speed against the applicable limit.',
+        evidence: ['Signed longitudinal acceleration ${context.longitudinalAcceleration?.toStringAsFixed(1) ?? 'available'} m/s²', if (speeding) 'Speed exceeds configured limit by more than 10 km/h', if (poorVisibility) 'Poor visibility context active'],
+      ));
+    }
+    if (near && context.isClosingIn) {
+      candidates.add(_Candidate(
+        severity: adverse ? RiskLevel.high : RiskLevel.moderate,
+        name: adverse ? 'Closing vehicle in adverse conditions' : 'Tracked vehicle closing in',
+        what: 'A visually close tracked vehicle is growing in view.',
+        why: adverse ? 'The forward visual buffer is reducing while weather, darkness, or visibility may reduce the available margin.' : 'The forward visual headway appears to be diminishing.',
+        action: 'Monitor the road ahead and increase following distance.',
+        evidence: ['Tracked vehicle within visual proximity threshold', 'Bounding-area growth indicates closing'],
+      ));
+    } else if (veryNear) {
+      candidates.add(const _Candidate(
+        severity: RiskLevel.moderate,
+        name: 'Very close tracked vehicle',
+        what: 'A detected vehicle exceeds the configured visual-proximity threshold.',
+        why: 'The current visual headway appears compact.',
+        action: 'Increase following distance when safe.',
+        evidence: ['Tracked vehicle within very-close visual proximity threshold'],
+      ));
+    }
+    if (hasSpeed && poorVisibility && context.currentSpeed! > RiskThresholds.highSpeedPoorVisibilityKmh) {
+      candidates.add(const _Candidate(
+        severity: RiskLevel.moderate,
+        name: 'High speed in poor visibility',
+        what: 'Speed exceeds 80 km/h while poor visibility is indicated.',
+        why: 'Reduced visibility can reduce the time available to identify and respond to hazards.',
+        action: 'Reduce speed to match visibility conditions.',
+        evidence: ['Speed exceeds 80 km/h', 'Poor visibility context active'],
+      ));
+    }
+    if (speeding) {
+      final severe = significantSpeeding && adverse;
+      candidates.add(_Candidate(
+        severity: severe ? RiskLevel.high : RiskLevel.moderate,
+        name: severe ? 'Significant speeding in adverse conditions' : 'Speed limit exceeded',
+        what: 'Speed is ${context.currentSpeed!.toStringAsFixed(0)} km/h against a configured ${context.currentSpeedLimit} km/h limit${context.isRaining ? ' while rain is reported' : ''}.',
+        why: severe ? 'A significant speed-limit excess combined with adverse conditions reduces the available response margin.' : 'Traveling above the configured road speed limit reduces the available response margin.',
+        action: 'Reduce speed to ${context.currentSpeedLimit} km/h and allow additional following distance.',
+        evidence: ['Speed exceeds configured limit by ${excess.toStringAsFixed(0)} km/h'],
+      ));
+    }
+
+    candidates.sort((a, b) => _severity(b.severity).compareTo(_severity(a.severity)));
+    final dataStatus = !context.telemetryFresh
+        ? AssessmentDataQuality.stale
+        : (!hasSpeed ||
+                !context.isWeatherAvailable ||
+                context.visibilityAssessment == VisibilityAssessment.unknown ||
+                context.daylightCondition == DaylightCondition.unknown)
+            ? AssessmentDataQuality.limited
+            : AssessmentDataQuality.good;
+    if (candidates.isEmpty) {
+      final limited = dataStatus != AssessmentDataQuality.good;
+      return RiskAssessment(
+        level: RiskLevel.low,
+        dataQualityStatus: dataStatus,
+        whatHappened: limited ? 'No configured hazard rule is currently triggered, but some inputs are limited.' : 'No configured risk rule is currently triggered by the available inputs.',
+        whyExplanation: limited ? 'This is not an all-clear: unavailable or stale inputs limit the assessment.' : 'The available inputs do not meet any configured hazard rule.',
+        recommendation: limited ? 'Drive with caution while assistance inputs are limited.' : 'Continue driving safely.',
+        primaryReason: limited ? 'Limited assessment data' : 'No configured risk rule triggered',
+        contextModifiers: modifiers,
+        dataQuality: quality,
+        advisories: advisories,
+      );
+    }
+    final primary = candidates.first;
+    return RiskAssessment(
+      level: primary.severity,
+      dataQualityStatus: dataStatus,
+      whatHappened: primary.what,
+      whyExplanation: primary.why,
+      recommendation: primary.action,
+      primaryReason: primary.name,
+      evidenceReasons: candidates.expand((candidate) => candidate.evidence).toSet().toList(),
+      contextModifiers: modifiers,
+      dataQuality: quality,
+      advisories: advisories,
+      activeEvents: candidates.map((candidate) => candidate.name).toList(),
+    );
+  }
+
+  int _severity(RiskLevel level) => switch (level) {
+    RiskLevel.low => 0,
+    RiskLevel.moderate => 1,
+    RiskLevel.high => 2,
+    RiskLevel.critical => 3,
+  };
+}

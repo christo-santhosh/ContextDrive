@@ -1,7 +1,7 @@
 """
 ContextDrive — CARLA Demo Controller
 =====================================
-This script runs on the laptop alongside CARLA. It sends simulated telemetry
+This script is retained as a historical prototype. It sends simulated telemetry
 to the ContextDrive app running on the phone over the local network.
 
 Setup:
@@ -24,6 +24,9 @@ Usage:
 
 Requirements:
   pip install requests
+
+NOTE: It targets an older endpoint/protocol and is not compatible with the v4
+telemetry lifecycle. Use manual_driving_rig.py --stream for current demos.
 """
 
 import requests

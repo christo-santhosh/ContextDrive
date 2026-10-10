@@ -1,4 +1,5 @@
 import 'package:sunrise_sunset_calc/sunrise_sunset_calc.dart';
+import '../models/context_vector.dart';
 
 class TimeContextService {
   DateTime? _sunset;
@@ -29,6 +30,24 @@ class TimeContextService {
     // Simple heuristic: before 6 AM or after 6 PM (18:00)
     final localTime = time.toLocal();
     return localTime.hour < 6 || localTime.hour >= 18;
+  }
+
+  /// Returns dawn/dusk only when location-derived solar times are available.
+  /// Without them the service reports unknown rather than presenting a rough
+  /// device-clock heuristic as authoritative environmental context.
+  DaylightCondition daylightCondition(DateTime time) {
+    if (_sunrise == null || _sunset == null) return DaylightCondition.unknown;
+    final local = time.toLocal();
+    final sunrise = _sunrise!.toLocal();
+    final sunset = _sunset!.toLocal();
+    const twilight = Duration(minutes: 30);
+    if (local.isAfter(sunrise.subtract(twilight)) && local.isBefore(sunrise.add(twilight)) ||
+        local.isAfter(sunset.subtract(twilight)) && local.isBefore(sunset.add(twilight))) {
+      return DaylightCondition.dawnDusk;
+    }
+    return local.isBefore(sunrise) || local.isAfter(sunset)
+        ? DaylightCondition.night
+        : DaylightCondition.day;
   }
 
   /// Determines if the current time is on a weekend

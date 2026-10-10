@@ -47,6 +47,7 @@ void main() {
         'accelX': 0.2,
         'accelY': 0.3,
         'accelZ': 0.1,
+        'longitudinalAccelMps2': -3.8,
         'scenarioContext': {
           'scenarioId': 'HEAVY_RAIN',
           'isRaining': true,
@@ -70,6 +71,7 @@ void main() {
       expect(tele.isNight, isTrue);
       expect(tele.visibilityCategory, 'poor');
       expect(tele.accelMagnitude, closeTo(0.374, 0.005));
+      expect(tele.longitudinalAcceleration, -3.8);
     });
 
     test('Sequence checking: rejects stale or out-of-order packets within same run', () {

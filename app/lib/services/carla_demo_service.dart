@@ -24,6 +24,9 @@ class CarlaTelemetry {
   final double accelX;
   final double accelY;
   final double accelZ;
+  /// Direction-of-travel projected acceleration in m/s². It is optional for
+  /// legacy senders, and positive means acceleration in travel direction.
+  final double? longitudinalAcceleration;
   final int? speedLimit;
   final bool? isRaining;
   final bool? isNight;
@@ -43,6 +46,7 @@ class CarlaTelemetry {
     required this.accelX,
     required this.accelY,
     required this.accelZ,
+    this.longitudinalAcceleration,
     this.speedLimit,
     this.isRaining,
     this.isNight,
@@ -261,6 +265,8 @@ class CarlaDemoService extends ChangeNotifier {
     final ax = (data['accelX'] as num?)?.toDouble() ?? 0.0;
     final ay = (data['accelY'] as num?)?.toDouble() ?? 0.0;
     final az = (data['accelZ'] as num?)?.toDouble() ?? 0.0;
+    final longitudinalAcceleration =
+        (data['longitudinalAccelMps2'] as num?)?.toDouble();
 
     final scenarioContext = data['scenarioContext'] as Map<String, dynamic>?;
 
@@ -288,6 +294,7 @@ class CarlaDemoService extends ChangeNotifier {
       accelX: ax,
       accelY: ay,
       accelZ: az,
+      longitudinalAcceleration: longitudinalAcceleration,
       speedLimit: speedLimit,
       isRaining: isRaining,
       isNight: isNight,
@@ -338,4 +345,3 @@ class CarlaDemoService extends ChangeNotifier {
     super.dispose();
   }
 }
-

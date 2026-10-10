@@ -14,6 +14,8 @@ import math
 import uuid
 import json
 
+from motion_math import signed_longitudinal_acceleration
+
 def generate_telemetry_packet(
     scenario_run_id: str,
     sequence_num: int,
@@ -22,6 +24,7 @@ def generate_telemetry_packet(
     cur_speed_kmh: float,
     accel_tuple: tuple,
     geo_tuple: tuple,
+    longitudinal_accel_mps2: float = None,
     scenario_id: str = "BENIGN_CRUISE",
     is_raining: bool = False,
     speed_limit: int = 60,
@@ -43,6 +46,7 @@ def generate_telemetry_packet(
         "accelX": round(ax, 3),
         "accelY": round(ay, 3),
         "accelZ": round(az, 3),
+        "longitudinalAccelMps2": round(longitudinal_accel_mps2, 3) if longitudinal_accel_mps2 is not None else None,
         "scenarioContext": {
             "scenarioId": scenario_id,
             "isRaining": is_raining,
@@ -61,6 +65,7 @@ def test_contract():
         sim_frame=747,
         cur_speed_kmh=54.2,
         accel_tuple=(0.045, -0.123, 0.001),
+        longitudinal_accel_mps2=-3.8,
         geo_tuple=(9.931234, 76.267341),
         scenario_id="HEAVY_RAIN_TEST",
         is_raining=True,
@@ -73,7 +78,7 @@ def test_contract():
     required_keys = [
         "protocolVersion", "scenarioRunId", "sequenceNumber",
         "simulationTime", "simulationFrame", "speed", "speedKmh",
-        "latitude", "longitude", "accelX", "accelY", "accelZ", "scenarioContext"
+        "latitude", "longitude", "accelX", "accelY", "accelZ", "longitudinalAccelMps2", "scenarioContext"
     ]
     for k in required_keys:
         assert k in pkt, f"Missing key: {k}"
@@ -91,6 +96,7 @@ def test_contract():
     # 4. Invariant acceleration norm calculation
     norm = math.sqrt(pkt["accelX"]**2 + pkt["accelY"]**2 + pkt["accelZ"]**2)
     assert round(norm, 3) == 0.131
+    assert pkt["longitudinalAccelMps2"] == -3.8
 
     # 5. Serialization check
     json_str = json.dumps(pkt)
@@ -99,5 +105,17 @@ def test_contract():
     print("[OK] Telemetry Contract verification passed!")
     print(json.dumps(pkt, indent=2))
 
+
+def test_signed_longitudinal_motion():
+    # Forward travel: acceleration along the nose is positive; braking is negative.
+    assert signed_longitudinal_acceleration((10, 0, 0), (1, 0, 0), (3.5, 0, 0)) == 3.5
+    assert signed_longitudinal_acceleration((10, 0, 0), (1, 0, 0), (-3.5, 0, 0)) == -3.5
+    # Reverse travel flips the sign so acceleration in its direction remains positive.
+    assert signed_longitudinal_acceleration((-10, 0, 0), (1, 0, 0), (-3.5, 0, 0)) == 3.5
+    # Low speed is deliberately unknown, avoiding unstable direction inference.
+    assert signed_longitudinal_acceleration((1.0, 0, 0), (1, 0, 0), (-8, 0, 0)) is None
+    print('[OK] Signed longitudinal-motion checks passed!')
+
 if __name__ == "__main__":
     test_contract()
+    test_signed_longitudinal_motion()

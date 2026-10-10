@@ -407,8 +407,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             break;
         }
 
-        String timeStr = ctx.isNight ? "Night Mode" : "Day Mode";
-        IconData timeIcon = ctx.isNight ? Icons.nightlight_round : Icons.brightness_high;
+        String timeStr;
+        IconData timeIcon;
+        if (ctx.daylightCondition == DaylightCondition.unknown) {
+          timeStr = 'Time Unknown';
+          timeIcon = Icons.help_outline;
+        } else {
+          timeStr = ctx.isNight ? 'Night Mode' : 'Day Mode';
+          timeIcon = ctx.isNight ? Icons.nightlight_round : Icons.brightness_high;
+        }
 
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -674,6 +681,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         
         Color riskColor;
         switch (assessment.level) {
+          case RiskLevel.critical:
+            riskColor = Colors.deepPurpleAccent;
+            break;
           case RiskLevel.high:
             riskColor = Colors.redAccent;
             break;
@@ -682,9 +692,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             break;
           case RiskLevel.low:
             riskColor = Colors.greenAccent;
-            break;
-          case RiskLevel.limited:
-            riskColor = Colors.grey;
             break;
         }
 
@@ -695,7 +702,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white30, width: 1),
             boxShadow: [
-              if (assessment.level == RiskLevel.high)
+              if (assessment.level == RiskLevel.high || assessment.level == RiskLevel.critical)
                 BoxShadow(color: riskColor.withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 2)
             ]
           ),
@@ -760,9 +767,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
               const SizedBox(height: 8),
               Text(
-                'Why: ${assessment.howExplanation}',
+                'What happened: ${assessment.whatHappened}',
                 style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
               ),
+              const SizedBox(height: 3),
+              Text('Why it matters: ${assessment.whyExplanation}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 4),
               if (assessment.primaryReason.isNotEmpty) ...[
                 Text('Observed: ${assessment.primaryReason}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
@@ -772,6 +781,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
               if (!isLandscape && assessment.contextModifiers.isNotEmpty) ...[
                 Text('Context: ${assessment.contextModifiers.join(" · ")}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                const SizedBox(height: 4),
+              ],
+              if (assessment.dataQualityStatus != AssessmentDataQuality.good && !assessment.isStale) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    assessment.dataQualityStatus == AssessmentDataQuality.limited
+                        ? 'LIMITED DATA — HAZARDS SHOWN WHEN OBSERVED'
+                        : 'STALE DATA',
+                    style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+              if (!isLandscape && assessment.advisories.isNotEmpty) ...[
+                Text('Advisory: ${assessment.advisories.join(" ")}', style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12)),
                 const SizedBox(height: 4),
               ],
               Text('Advice: ${assessment.recommendation}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 13, fontWeight: FontWeight.bold)),
@@ -787,40 +816,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   String _riskTitle(RiskLevel level) {
     switch (level) {
+      case RiskLevel.critical:
+        return 'CRITICAL HAZARD';
       case RiskLevel.high:
         return 'HIGH RISK';
       case RiskLevel.moderate:
         return 'CAUTION';
       case RiskLevel.low:
         return 'MONITORING';
-      case RiskLevel.limited:
-        return 'LIMITED DATA';
     }
   }
 
   IconData _riskIcon(RiskLevel level) {
     switch (level) {
+      case RiskLevel.critical:
+        return Icons.crisis_alert_rounded;
       case RiskLevel.high:
         return Icons.warning_amber_rounded;
       case RiskLevel.moderate:
         return Icons.warning_rounded;
       case RiskLevel.low:
         return Icons.verified_user_outlined;
-      case RiskLevel.limited:
-        return Icons.sensors_off_outlined;
     }
   }
 
   Color _riskColor(RiskLevel level) {
     switch (level) {
+      case RiskLevel.critical:
+        return Colors.deepPurpleAccent;
       case RiskLevel.high:
         return Colors.redAccent;
       case RiskLevel.moderate:
         return Colors.orangeAccent;
       case RiskLevel.low:
         return Colors.greenAccent;
-      case RiskLevel.limited:
-        return Colors.grey;
     }
   }
 

@@ -1,45 +1,13 @@
-import 'dart:async';
-import 'dart:math';
-import 'package:sensors_plus/sensors_plus.dart';
-
+/// Physical motion classification is intentionally unavailable in this MVP.
+/// A phone accelerometer measures the phone's axes, not the vehicle's forward
+/// axis. Without a repeatable mount-orientation calibration, a magnitude or a
+/// single axis cannot honestly distinguish braking from acceleration.
 class ImuService {
-  StreamSubscription? _subscription;
-  bool _isErratic = false;
-  DateTime? _erraticUntil;
-
-  final bool _isCalibrated = false;
-
-  /// Returns true if harsh braking or swerving was detected recently (within last 3 seconds)
-  bool get isErratic {
-    if (!_isCalibrated) return false;
-
-    if (_erraticUntil != null && DateTime.now().isAfter(_erraticUntil!)) {
-      _isErratic = false;
-      _erraticUntil = null;
-    }
-    return _isErratic;
-  }
+  bool get isDirectionalClassificationAvailable => false;
 
   void start() {
-    // UserAccelerometerEvent stream excludes gravity, giving pure linear acceleration in m/s^2
-    _subscription = userAccelerometerEventStream().listen((UserAccelerometerEvent event) {
-      // Calculate the magnitude of the 3D acceleration vector
-      double magnitude = sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
-
-      // Disable IMU risk evaluation until phone mount calibration is implemented
-      if (!_isCalibrated) return;
-      
-      // Threshold: 4.5 m/s^2 (~0.45 G's) is universally considered harsh/aggressive driving
-      if (magnitude > 4.5) {
-        _isErratic = true;
-        _erraticUntil = DateTime.now().add(const Duration(seconds: 3));
-      }
-    });
+    // Reserved for a calibrated mount-orientation implementation.
   }
 
-  void stop() {
-    _subscription?.cancel();
-    _subscription = null;
-    _isErratic = false;
-  }
+  void stop() {}
 }

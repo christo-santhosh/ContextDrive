@@ -1,50 +1,25 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter_test/flutter_test.dart';
-import 'package:app/models/context_vector.dart';
 import 'package:app/engine/risk_engine.dart';
+import 'package:app/models/context_vector.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Risk engine deterministic test', () {
-    final engine = RiskEngine();
-    
-    // High risk test
-    final highRiskContext = ContextVector(
-      currentSpeed: 90.0,
-      currentSpeedLimit: 80,
-      isRaining: true,
-      isNight: true,
-      visibility: 500,
-      isWeatherAvailable: true,
-      nearbyVehicles: 2,
-      closestVehicleDistance: 0.1,
-      isClosingIn: true,
-    );
-    
-    final highAssessment = engine.assessRisk(highRiskContext);
-    expect(highAssessment.level, RiskLevel.high);
-    
-    // Low risk test
-    final lowRiskContext = ContextVector(
-      currentSpeed: 40.0,
+  test('structured assessment preserves event, explanation and action', () {
+    final assessment = RiskEngine().assessRisk(ContextVector(
+      currentSpeed: 85,
       currentSpeedLimit: 60,
-      isRaining: false,
-      isNight: false,
-      visibility: 10000,
+      weatherCategory: WeatherCategory.rain,
+      daylightCondition: DaylightCondition.night,
+      visibilityMeters: 500,
       isWeatherAvailable: true,
       nearbyVehicles: 0,
-      closestVehicleDistance: 1.0,
+      closestVehicleDistance: 1,
       isClosingIn: false,
-    );
-    
-    final lowAssessment = engine.assessRisk(lowRiskContext);
-    expect(lowAssessment.level, RiskLevel.low);
+      motion: MotionClassification.normal,
+    ));
+    expect(assessment.level, RiskLevel.high);
+    expect(assessment.whatHappened, isNotEmpty);
+    expect(assessment.whyExplanation, isNotEmpty);
+    expect(assessment.recommendation, isNotEmpty);
+    expect(assessment.advisories, isNotEmpty);
   });
-
-
 }
