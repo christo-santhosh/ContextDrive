@@ -16,6 +16,9 @@ class WeatherCondition {
     required this.lastUpdated,
     this.sourceLatitude,
     this.sourceLongitude,
+    this.locationName,
+    this.humidity,
+    this.windSpeedMps,
   });
 
   final double? temperature;
@@ -26,6 +29,9 @@ class WeatherCondition {
   final DateTime lastUpdated;
   final double? sourceLatitude;
   final double? sourceLongitude;
+  final String? locationName;
+  final int? humidity;
+  final double? windSpeedMps;
 
   bool get isRaining => category == WeatherCategory.rain || category == WeatherCategory.heavyRain;
 }
@@ -36,13 +42,17 @@ class WeatherCondition {
 class WeatherService {
   static const _refreshInterval = Duration(minutes: 15);
   static const _retryInterval = Duration(minutes: 5);
-  final String _apiKey = const String.fromEnvironment('WEATHER_API_KEY');
+  final String _apiKey = const String.fromEnvironment(
+    'WEATHER_API_KEY',
+    defaultValue: '80d1a427277577b25e9c3d9e0412ee41',
+  );
   WeatherCondition? _cachedWeather;
   DateTime? _nextRetryAt;
   Future<WeatherCondition>? _activeRequest;
   String? lastError;
 
   bool get isConfigured => _apiKey.isNotEmpty;
+  String get apiKey => _apiKey;
   WeatherCondition? get currentWeather => _cachedWeather;
 
   Future<WeatherCondition> getWeather(double latitude, double longitude, {bool forceRefresh = false}) {
@@ -75,6 +85,14 @@ class WeatherService {
       final primary = weather != null && weather.isNotEmpty ? weather.first : <String, dynamic>{};
       final id = (primary['id'] as num?)?.toInt();
       final description = primary['description']?.toString() ?? 'Reported conditions';
+      final locationName = data['name']?.toString();
+      final humidity = (data['main'] as Map?)?['humidity'] is num
+          ? ((data['main'] as Map)['humidity'] as num).toInt()
+          : null;
+      final windSpeed = (data['wind'] as Map?)?['speed'] is num
+          ? ((data['wind'] as Map)['speed'] as num).toDouble()
+          : null;
+
       _cachedWeather = WeatherCondition(
         temperature: (data['main'] as Map?)?['temp'] is num ? ((data['main'] as Map)['temp'] as num).toDouble() : null,
         category: _categoryFor(id, description),
@@ -84,6 +102,9 @@ class WeatherService {
         lastUpdated: now,
         sourceLatitude: latitude,
         sourceLongitude: longitude,
+        locationName: locationName,
+        humidity: humidity,
+        windSpeedMps: windSpeed,
       );
       lastError = null;
       _nextRetryAt = null;
@@ -105,6 +126,9 @@ class WeatherService {
     lastUpdated: now,
     sourceLatitude: latitude,
     sourceLongitude: longitude,
+    locationName: null,
+    humidity: null,
+    windSpeedMps: null,
   );
 
   WeatherCategory _categoryFor(int? id, String description) {

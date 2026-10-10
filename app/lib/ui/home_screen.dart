@@ -48,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _startAppFlow() async {
     final appState = context.read<AppStateModel>();
+    if (appState.currentState == AppState.ready) return;
     appState.setState(AppState.starting);
 
     bool hasPermission = await _requestPermissions(appState);
@@ -161,25 +162,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildTopBar(isLandscape: false),
-        const SizedBox(height: 12),
-        Expanded(flex: 3, child: _buildSpeedometer(isLandscape: false)),
-        const SizedBox(height: 12),
+        _buildSpeedDashboard(isLandscape: false),
+        const SizedBox(height: 8),
         Expanded(
-          flex: 6,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildCameraFeed(),
-              Positioned(
-                bottom: 12, left: 12, right: 12,
-                child: _buildRiskStatusRing(isLandscape: false),
-              ),
-            ],
-          ),
+          child: _buildCameraFeed(),
         ),
-        const SizedBox(height: 12),
-        _buildTelemetryCard(isLandscape: false),
+        const SizedBox(height: 8),
+        _buildRiskStatusRing(isLandscape: false),
       ],
     );
   }
@@ -188,34 +177,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Left column (Speed + Telemetry)
+        // Left column (Speed + Alerts with integrated Telemetry)
         Expanded(
-          flex: 4,
+          flex: 5,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildTopBar(isLandscape: true),
-              const SizedBox(height: 8),
-              Expanded(flex: 3, child: _buildSpeedometer(isLandscape: true)),
-              const SizedBox(height: 8),
-              Expanded(flex: 4, child: _buildTelemetryCard(isLandscape: true)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Right column (Camera + Overlay Risk)
-        Expanded(
-          flex: 6,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildCameraFeed(),
-              Positioned(
-                bottom: 12, left: 12, right: 12,
-                child: _buildRiskStatusRing(isLandscape: true),
+              _buildSpeedDashboard(isLandscape: true),
+              const SizedBox(height: 6),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildRiskStatusRing(isLandscape: true),
+                ),
               ),
             ],
           ),
+        ),
+        const SizedBox(width: 10),
+        // Right column (Full unobstructed Camera Feed)
+        Expanded(
+          flex: 6,
+          child: _buildCameraFeed(),
         ),
       ],
     );
@@ -380,104 +362,153 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildTopBar({required bool isLandscape}) {
-    return Consumer<RiskManager>(
-      builder: (context, riskManager, child) {
-        final ctx = riskManager.contextVector;
-
-        String weatherStr;
-        IconData weatherIcon;
-
-        switch (ctx.visibilityAssessment) {
-          case VisibilityAssessment.poor:
-            weatherStr = ctx.isRaining
-                ? "Raining"
-                : (ctx.isNight ? "Night" : "Low Vis");
-            weatherIcon = ctx.isRaining
-                ? Icons.water_drop
-                : (ctx.isNight ? Icons.nightlight_round : Icons.visibility_off);
-            break;
-          case VisibilityAssessment.adequate:
-            weatherStr = "Clear Vis";
-            weatherIcon = Icons.wb_sunny;
-            break;
-          case VisibilityAssessment.unknown:
-            weatherStr = "Vis Unknown";
-            weatherIcon = Icons.help_outline;
-            break;
-        }
-
-        String timeStr;
-        IconData timeIcon;
-        if (ctx.daylightCondition == DaylightCondition.unknown) {
-          timeStr = 'Time Unknown';
-          timeIcon = Icons.help_outline;
-        } else {
-          timeStr = ctx.isNight ? 'Night Mode' : 'Day Mode';
-          timeIcon = ctx.isNight ? Icons.nightlight_round : Icons.brightness_high;
-        }
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildGlassPill(
-              icon: weatherIcon,
-              text: weatherStr,
-              isLandscape: isLandscape,
-            ),
-            _buildGlassPill(
-              icon: timeIcon,
-              text: timeStr,
-              isLandscape: isLandscape,
-            ),
-            _buildVoiceControl(riskManager, isLandscape),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildSpeedometer({required bool isLandscape}) {
+  Widget _buildSpeedDashboard({required bool isLandscape}) {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
         final speed = riskManager.contextVector.currentSpeed;
+        final speedLimit = riskManager.contextVector.currentSpeedLimit;
+        final ctx = riskManager.contextVector;
+        final liveWeather = riskManager.liveWeather;
+
+        // Dedicated Weather indicator (strictly meteorological, NEVER shows Time/Night)
+        String weatherStr;
+        IconData weatherIcon;
+        if (ctx.isRaining) {
+          weatherStr = ctx.weatherCategory == WeatherCategory.heavyRain ? "Heavy Rain" : "Raining";
+          weatherIcon = ctx.weatherCategory == WeatherCategory.heavyRain ? Icons.thunderstorm : Icons.water_drop;
+        } else if (ctx.weatherCategory == WeatherCategory.fog) {
+          weatherStr = "Fog";
+          weatherIcon = Icons.cloud;
+        } else if (liveWeather != null && liveWeather.isAvailable) {
+          final desc = liveWeather.description.toLowerCase();
+          if (desc.contains('cloud') || desc.contains('overcast')) {
+            weatherStr = "Cloudy";
+            weatherIcon = Icons.cloud_outlined;
+          } else if (desc.contains('clear')) {
+            weatherStr = "Clear";
+            weatherIcon = Icons.wb_sunny_outlined;
+          } else if (desc.contains('rain') || desc.contains('drizzle')) {
+            weatherStr = "Rain";
+            weatherIcon = Icons.water_drop_outlined;
+          } else if (desc.contains('fog') || desc.contains('mist') || desc.contains('haze')) {
+            weatherStr = "Hazy";
+            weatherIcon = Icons.cloud_outlined;
+          } else {
+            weatherStr = liveWeather.description.length > 8
+                ? liveWeather.description.substring(0, 8)
+                : liveWeather.description;
+            weatherIcon = Icons.cloud_outlined;
+          }
+        } else if (ctx.weatherCategory == WeatherCategory.clear) {
+          weatherStr = "Clear";
+          weatherIcon = Icons.wb_sunny_outlined;
+        } else {
+          weatherStr = "Weather N/A";
+          weatherIcon = Icons.cloud_off_outlined;
+        }
+
+        // Dedicated Time indicator (Day vs Night vs Dawn/Dusk)
+        String timeStr;
+        IconData timeIcon;
+        switch (ctx.daylightCondition) {
+          case DaylightCondition.night:
+            timeStr = 'Night';
+            timeIcon = Icons.nightlight_round;
+            break;
+          case DaylightCondition.day:
+            timeStr = 'Day';
+            timeIcon = Icons.brightness_high;
+            break;
+          case DaylightCondition.dawnDusk:
+            timeStr = 'Dawn/Dusk';
+            timeIcon = Icons.wb_twilight;
+            break;
+          case DaylightCondition.unknown:
+            timeStr = ctx.isNight ? 'Night' : 'Day';
+            timeIcon = ctx.isNight ? Icons.nightlight_round : Icons.brightness_high;
+            break;
+        }
+
         return Container(
+          height: isLandscape ? 48 : 56,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
             color: const Color(0xFF161618),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white10),
           ),
-          child: Stack(
+          child: Row(
             children: [
-              Center(
-                child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
               Text(
                 speed != null ? speed.toStringAsFixed(0) : "--",
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: isLandscape ? 56 : 76,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -2,
+                  fontSize: isLandscape ? 26 : 32,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1,
                 ),
               ),
+              const SizedBox(width: 4),
               Text(
                 "KM/H",
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: isLandscape ? 14 : 16,
+                  fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+                  letterSpacing: 1,
                 ),
               ),
-              ],
+              if (speedLimit != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: Colors.redAccent, width: 2.5),
+                  ),
+                  child: Center(
+                    child: Text(
+                      "$speedLimit",
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 10,
+                      ),
                     ),
                   ),
+                ),
+              ],
+              const SizedBox(width: 4),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: _buildGlassPill(
+                          icon: weatherIcon,
+                          text: weatherStr,
+                          isLandscape: isLandscape,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: _buildGlassPill(
+                          icon: timeIcon,
+                          text: timeStr,
+                          isLandscape: isLandscape,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    _buildVoiceControl(riskManager, isLandscape),
+                  ],
                 ),
               ),
             ],
@@ -487,62 +518,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildTelemetryCard({required bool isLandscape}) {
-    return Consumer<RiskManager>(
-      builder: (context, riskManager, child) {
-        final ctx = riskManager.contextVector;
-        final vehicleProximity = ctx.closestVehicleDistance < 0.2
-            ? 'Vehicle: very near'
-            : ctx.closestVehicleDistance < 0.5
-                ? 'Vehicle: near'
-                : 'Vehicle: clear';
-        final riskFocus = vehicleProximity;
-          
-        return Container(
-          padding: EdgeInsets.all(isLandscape ? 8 : 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF161618),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildTelemetryRow("Vehicles", "${ctx.nearbyVehicles}", Icons.directions_car, isLandscape),
-
-                _buildTelemetryRow("Risk focus", riskFocus, Icons.radar, isLandscape),
-                _buildTelemetryRow("Closing", ctx.isClosingIn ? "Yes" : "No", Icons.speed, isLandscape),
-                _buildTelemetryRow(
-                  "GPS",
-                  ctx.currentSpeed != null ? "Valid" : "Waiting",
-                  Icons.location_on_outlined,
-                  isLandscape,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildTelemetryRow(String label, String value, IconData icon, bool isLandscape) {
+  Widget _telemetryChip(IconData icon, String text) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: Colors.white54, size: isLandscape ? 18 : 24),
-        SizedBox(width: isLandscape ? 6 : 12),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(color: Colors.white54, fontSize: isLandscape ? 13 : 16),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        Icon(icon, color: Colors.white54, size: 12),
+        const SizedBox(width: 3),
         Text(
-          value,
-          style: TextStyle(color: Colors.white, fontSize: isLandscape ? 14 : 18, fontWeight: FontWeight.bold),
+          text,
+          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -550,18 +534,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildGlassPill({required IconData icon, required String text, required bool isLandscape}) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8 : 12, vertical: isLandscape ? 6 : 8),
+      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 6 : 8, vertical: isLandscape ? 4 : 6),
       decoration: BoxDecoration(
         color: const Color(0xFF161618),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.blueAccent, size: isLandscape ? 14 : 16),
-          SizedBox(width: isLandscape ? 4 : 6),
-          Text(text, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: isLandscape ? 11 : 13)),
+          Icon(icon, color: Colors.blueAccent, size: isLandscape ? 12 : 14),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: isLandscape ? 10 : 11)),
         ],
       ),
     );
@@ -659,7 +643,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 ),
                               ),
                               subtitle: Text(
-                                '${_formatTime(event.timestamp)} · ${event.recommendation}',
+                                '${_formatTime(event.timestamp)} Â· ${event.recommendation}',
                                 style: const TextStyle(color: Colors.white70),
                               ),
                             );
@@ -678,6 +662,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
         final assessment = riskManager.currentAssessment;
+        final ctx = riskManager.contextVector;
+        final vehicleProximity = ctx.closestVehicleDistance < 0.2
+            ? 'Very near'
+            : ctx.closestVehicleDistance < 0.5
+                ? 'Near'
+                : 'Clear';
         
         Color riskColor;
         switch (assessment.level) {
@@ -696,15 +686,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
 
         return Container(
-          padding: EdgeInsets.symmetric(vertical: isLandscape ? 12 : 16, horizontal: isLandscape ? 12 : 16),
+          padding: EdgeInsets.symmetric(vertical: isLandscape ? 8 : 10, horizontal: isLandscape ? 10 : 14),
           decoration: BoxDecoration(
-            color: riskColor.withValues(alpha: 0.85),
+            color: riskColor.withValues(alpha: 0.88),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white30, width: 1),
             boxShadow: [
               if (assessment.level == RiskLevel.high || assessment.level == RiskLevel.critical)
                 BoxShadow(color: riskColor.withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 2)
-            ]
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -712,101 +702,138 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               Row(
                 children: [
-                  Icon(_riskIcon(assessment.level), color: Colors.white, size: isLandscape ? 24 : 30),
-                  const SizedBox(width: 8),
+                  Icon(_riskIcon(assessment.level), color: Colors.white, size: isLandscape ? 18 : 22),
+                  const SizedBox(width: 6),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'DRIVING RISK',
-                          style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12, fontWeight: FontWeight.w700, letterSpacing: 1.0),
-                        ),
-                        Text(
-                          _riskTitle(assessment.level),
-                          style: TextStyle(color: Colors.white, fontSize: isLandscape ? 17 : 20, fontWeight: FontWeight.w900, letterSpacing: 0.6),
-                        ),
-                      ],
+                    child: Text(
+                      _riskTitle(assessment.level),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isLandscape ? 14 : 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  if (assessment.isStale)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.6)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.pause_circle_outline, size: 10, color: Colors.amberAccent),
+                          SizedBox(width: 2),
+                          Text(
+                            'STALE',
+                            style: TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (assessment.dataQualityStatus != AssessmentDataQuality.good)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        assessment.dataQualityStatus == AssessmentDataQuality.limited
+                            ? 'LIMITED'
+                            : 'STALE',
+                        style: const TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  const SizedBox(width: 6),
                   Icon(
                     riskManager.voiceAlertsEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                     color: Colors.white70,
-                    size: isLandscape ? 18 : 20,
+                    size: 16,
                   ),
                 ],
               ),
-              if (assessment.isStale) ...[
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.5)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.pause_circle_outline, size: 13, color: Colors.amberAccent),
-                      SizedBox(width: 4),
-                      Text(
-                        'TELEMETRY INACTIVE / STALE',
-                        style: TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (assessment.previousLevel != null && assessment.previousLevel != assessment.level) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Changed from ${assessment.previousLevel!.name.toUpperCase()} at ${assessment.raisedAt?.hour.toString().padLeft(2, '0')}:${assessment.raisedAt?.minute.toString().padLeft(2, '0')}:${assessment.raisedAt?.second.toString().padLeft(2, '0')}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12, fontStyle: FontStyle.italic)
-                ),
-              ],
-              const SizedBox(height: 8),
+              const SizedBox(height: 5),
               Text(
                 'What happened: ${assessment.whatHappened}',
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 3),
-              Text('Why it matters: ${assessment.whyExplanation}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              const SizedBox(height: 4),
-              if (assessment.primaryReason.isNotEmpty) ...[
-                Text('Observed: ${assessment.primaryReason}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                if (assessment.evidenceReasons.isNotEmpty)
-                  Text('Evidence: ${assessment.evidenceReasons.join(" · ")}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                const SizedBox(height: 4),
-              ],
-              if (!isLandscape && assessment.contextModifiers.isNotEmpty) ...[
-                Text('Context: ${assessment.contextModifiers.join(" · ")}', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                const SizedBox(height: 4),
-              ],
-              if (assessment.dataQualityStatus != AssessmentDataQuality.good && !assessment.isStale) ...[
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.black38,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    assessment.dataQualityStatus == AssessmentDataQuality.limited
-                        ? 'LIMITED DATA — HAZARDS SHOWN WHEN OBSERVED'
-                        : 'STALE DATA',
-                    style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                  ),
+              const SizedBox(height: 2),
+              Text(
+                'Advice: ${assessment.recommendation}',
+                style: const TextStyle(color: Colors.yellowAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (assessment.advisories.isNotEmpty || assessment.contextModifiers.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  assessment.advisories.isNotEmpty
+                      ? 'Advisory: ${assessment.advisories.first}'
+                      : 'Context: ${assessment.contextModifiers.join(" · ")}',
+                  style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 11),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
-              if (!isLandscape && assessment.advisories.isNotEmpty) ...[
-                Text('Advisory: ${assessment.advisories.join(" ")}', style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12)),
-                const SizedBox(height: 4),
-              ],
-              Text('Advice: ${assessment.recommendation}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              if (!isLandscape)
-                Text('Data: ${assessment.dataQuality.join(" · ")}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              // Integrated Telemetry Tray (Connected directly with zero gap & overflow-proof scaling)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white12, width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: _telemetryChip(Icons.directions_car, "${ctx.nearbyVehicles} veh"),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: _telemetryChip(Icons.radar, vehicleProximity),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: _telemetryChip(Icons.speed, ctx.isClosingIn ? "Closing: YES" : "Closing: NO"),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: _telemetryChip(
+                            Icons.location_on_outlined,
+                            ctx.currentSpeed != null ? "GPS: OK" : "GPS: Waiting",
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         );

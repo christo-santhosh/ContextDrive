@@ -76,6 +76,21 @@ class RiskManager extends ChangeNotifier {
   SpeedReading? _latestSpeedReading;
   int _invalidSpeedReadings = 0;
   WeatherCondition? _weather;
+  WeatherCondition? get liveWeather => _weather ?? _weatherService.currentWeather;
+  Position? _latestPosition;
+  Position? get latestPosition => _latestPosition;
+
+  @visibleForTesting
+  void setPositionForTesting(Position position) {
+    _latestPosition = position;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void setWeatherForTesting(WeatherCondition weather) {
+    _weather = weather;
+    notifyListeners();
+  }
   List<TrackedObject> _currentTracks = [];
   StreamSubscription<Position>? _positionSubscription;
   Timer? _evaluationTimer;
@@ -114,8 +129,37 @@ class RiskManager extends ChangeNotifier {
     _evaluationTimer = Timer.periodic(const Duration(milliseconds: 500), (_) => _evaluateRisk());
   }
 
+  Future<WeatherCondition?> refreshLiveWeather() async {
+    Position? pos = _latestPosition;
+    if (pos == null) {
+      try {
+        pos = await Geolocator.getLastKnownPosition();
+        pos ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(timeLimit: Duration(seconds: 4)),
+        );
+        _latestPosition = pos;
+      } catch (e) {
+        debugPrint('Geolocator exception in refreshLiveWeather: $e');
+      }
+    }
+    if (pos != null) {
+      final weather = await _weatherService.getWeather(
+        pos.latitude,
+        pos.longitude,
+        forceRefresh: true,
+      );
+      _weather = weather;
+      _timeContextService.updateLocation(pos.latitude, pos.longitude);
+      _speedLimitService.updateSpeedLimit(pos.latitude, pos.longitude);
+      notifyListeners();
+      return weather;
+    }
+    return null;
+  }
+
   void _onPosition(Position position) {
     if (_carlaDemoService.isRunning) return;
+    _latestPosition = position;
     final session = _sessionToken;
     final reading = _gpsService.processPosition(position);
     _latestSpeedReading = reading;
