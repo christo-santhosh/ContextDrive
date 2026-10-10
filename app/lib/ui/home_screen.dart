@@ -225,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: YOLOView(
-        modelPath: 'yolov8n',
+        modelPath: 'yolo26n',
         task: YOLOTask.detect,
         controller: _yoloController,
         onModelLoad: (path, task) {
@@ -272,32 +272,74 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         actions: [
           Consumer<CarlaDemoService>(
             builder: (context, carla, _) {
+              Color badgeBg;
+              Color badgeBorder;
+              Color badgeText;
+              IconData badgeIcon;
+              String badgeLabel;
+
+              if (!carla.isRunning) {
+                badgeBg = Colors.white.withValues(alpha: 0.05);
+                badgeBorder = Colors.white24;
+                badgeText = Colors.white60;
+                badgeIcon = Icons.directions_car_outlined;
+                badgeLabel = 'PHYSICAL';
+              } else {
+                switch (carla.connectionStatus) {
+                  case CarlaConnectionStatus.active:
+                    badgeBg = Colors.blueAccent.withValues(alpha: 0.2);
+                    badgeBorder = Colors.blueAccent;
+                    badgeText = Colors.lightBlueAccent;
+                    badgeIcon = Icons.cloud_done;
+                    badgeLabel = 'CARLA ACTIVE (${carla.packetsReceived})';
+                    break;
+                  case CarlaConnectionStatus.paused:
+                    badgeBg = Colors.amber.withValues(alpha: 0.2);
+                    badgeBorder = Colors.amber;
+                    badgeText = Colors.amberAccent;
+                    badgeIcon = Icons.pause_circle_outline;
+                    badgeLabel = 'CARLA PAUSED';
+                    break;
+                  case CarlaConnectionStatus.disconnected:
+                    badgeBg = Colors.redAccent.withValues(alpha: 0.2);
+                    badgeBorder = Colors.redAccent;
+                    badgeText = Colors.redAccent;
+                    badgeIcon = Icons.cloud_off;
+                    badgeLabel = 'CARLA DISCONNECTED';
+                    break;
+                  case CarlaConnectionStatus.listening:
+                    badgeBg = Colors.white.withValues(alpha: 0.1);
+                    badgeBorder = Colors.white30;
+                    badgeText = Colors.white70;
+                    badgeIcon = Icons.hourglass_empty;
+                    badgeLabel = 'CARLA WAITING';
+                    break;
+                  case CarlaConnectionStatus.idle:
+                    badgeBg = Colors.white.withValues(alpha: 0.05);
+                    badgeBorder = Colors.white24;
+                    badgeText = Colors.white54;
+                    badgeIcon = Icons.cloud_off;
+                    badgeLabel = 'CARLA IDLE';
+                    break;
+                }
+              }
+
               return TextButton.icon(
                 style: TextButton.styleFrom(
-                  backgroundColor: carla.isRunning 
-                      ? Colors.green.withValues(alpha: 0.2) 
-                      : Colors.white.withValues(alpha: 0.05),
+                  backgroundColor: badgeBg,
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: carla.isRunning ? Colors.greenAccent : Colors.white24,
-                    ),
+                    side: BorderSide(color: badgeBorder),
                   ),
                 ),
-                icon: Icon(
-                  carla.isRunning ? Icons.cloud_done : Icons.cloud_off,
-                  size: 16,
-                  color: carla.isRunning ? Colors.greenAccent : Colors.white54,
-                ),
+                icon: Icon(badgeIcon, size: 16, color: badgeText),
                 label: Text(
-                  carla.isRunning 
-                      ? (carla.packetsReceived > 0 ? '${carla.packetsReceived} pkts' : 'CARLA ON') 
-                      : 'CARLA OFF',
+                  badgeLabel,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: carla.isRunning ? Colors.greenAccent : Colors.white60,
+                    color: badgeText,
                   ),
                 ),
                 onPressed: () {
@@ -342,13 +384,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
         final ctx = riskManager.contextVector;
-        
-        String weatherStr = "Weather off";
-        IconData weatherIcon = Icons.cloud_off_outlined;
-        
-        if (ctx.isWeatherAvailable) {
-          weatherStr = ctx.isRaining ? "Raining" : "Clear";
-          weatherIcon = ctx.isRaining ? Icons.water_drop : Icons.wb_sunny;
+
+        String weatherStr;
+        IconData weatherIcon;
+
+        switch (ctx.visibilityAssessment) {
+          case VisibilityAssessment.poor:
+            weatherStr = ctx.isRaining
+                ? "Raining"
+                : (ctx.isNight ? "Night" : "Low Vis");
+            weatherIcon = ctx.isRaining
+                ? Icons.water_drop
+                : (ctx.isNight ? Icons.nightlight_round : Icons.visibility_off);
+            break;
+          case VisibilityAssessment.adequate:
+            weatherStr = "Clear Vis";
+            weatherIcon = Icons.wb_sunny;
+            break;
+          case VisibilityAssessment.unknown:
+            weatherStr = "Vis Unknown";
+            weatherIcon = Icons.help_outline;
+            break;
         }
 
         String timeStr = ctx.isNight ? "Night Mode" : "Day Mode";
@@ -673,6 +729,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ],
               ),
+              if (assessment.isStale) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.5)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.pause_circle_outline, size: 13, color: Colors.amberAccent),
+                      SizedBox(width: 4),
+                      Text(
+                        'TELEMETRY INACTIVE / STALE',
+                        style: TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (assessment.previousLevel != null && assessment.previousLevel != assessment.level) ...[
                 const SizedBox(height: 4),
                 Text(

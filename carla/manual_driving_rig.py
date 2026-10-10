@@ -19,6 +19,7 @@ import math
 import argparse
 import weakref
 import threading
+import uuid
 
 import os
 import glob
@@ -287,6 +288,11 @@ def main():
     parser.add_argument('--stream', action='store_true', help='Stream driving telemetry live to ContextDrive app')
     parser.add_argument('--phone', default='192.168.43.1', help='Phone IP running ContextDrive app (default: 192.168.43.1)')
     parser.add_argument('--stream-port', type=int, default=8080, help='ContextDrive app port (default: 8080)')
+    parser.add_argument('--scenario', default='MANUAL_CRUISE', help='Scenario identifier, e.g. HEAVY_RAIN, NIGHT_CRUISE (default: MANUAL_CRUISE)')
+    parser.add_argument('--speed-limit', type=int, default=None, help='Scenario speed limit in km/h (default: None)')
+    parser.add_argument('--rain', action='store_true', help='Apply heavy rain in simulator and telemetry')
+    parser.add_argument('--night', action='store_true', help='Apply night lighting in simulator and telemetry')
+    parser.add_argument('--visibility', default=None, help='Explicit visibility category, e.g. poor, adequate, clear (default: None)')
     args = parser.parse_args()
 
     try:
@@ -312,6 +318,22 @@ def main():
     client = carla.Client(args.host, args.port)
     client.set_timeout(10.0)
     world = client.get_world()
+
+    # ── Apply Environmental Scenario Conditions if specified ──
+    if args.rain or args.night:
+        try:
+            weather = world.get_weather()
+            if args.rain:
+                weather.precipitation = 80.0
+                weather.precipitation_deposits = 70.0
+                weather.wetness = 80.0
+                weather.cloudiness = 90.0
+            if args.night:
+                weather.sun_altitude_angle = -30.0
+            world.set_weather(weather)
+            print(f"[OK] Applied simulation weather parameters (Rain={args.rain}, Night={args.night})")
+        except Exception as e:
+            print(f"[WARN] Failed to apply weather settings: {e}")
 
     # ── Ensure Asynchronous Mode ──
     settings = world.get_settings()
@@ -345,7 +367,10 @@ def main():
         if args.stream:
             import requests
             telemetry_url = f"http://{args.phone}:{args.stream_port}/telemetry"
+            scenario_run_id = f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+            sequence_counter = [0]
             print(f"[OK] Live telemetry streamer active -> {telemetry_url}")
+            print(f"[OK] Session Run ID: {scenario_run_id}")
 
             def _stream_worker():
                 carla_map = world.get_map()
@@ -358,13 +383,35 @@ def main():
                             loc = ego_vehicle.get_transform().location
                             geo = carla_map.transform_to_geolocation(loc)
 
+                            try:
+                                snapshot = world.get_snapshot()
+                                sim_time = snapshot.timestamp.elapsed_seconds
+                                sim_frame = snapshot.timestamp.frame
+                            except Exception:
+                                sim_time = time.time()
+                                sim_frame = sequence_counter[0]
+
+                            sequence_counter[0] += 1
                             payload = {
+                                "protocolVersion": 2,
+                                "scenarioRunId": scenario_run_id,
+                                "sequenceNumber": sequence_counter[0],
+                                "simulationTime": round(sim_time, 3),
+                                "simulationFrame": int(sim_frame),
                                 "speed": round(cur_speed, 2),
+                                "speedKmh": round(cur_speed, 2),
                                 "latitude": round(geo.latitude, 6),
                                 "longitude": round(geo.longitude, 6),
                                 "accelX": round(accel.x, 3),
                                 "accelY": round(accel.y, 3),
                                 "accelZ": round(accel.z, 3),
+                                "scenarioContext": {
+                                    "scenarioId": args.scenario,
+                                    "isRaining": bool(args.rain),
+                                    "speedLimit": args.speed_limit,
+                                    "isNight": bool(args.night),
+                                    "visibilityCategory": args.visibility,
+                                }
                             }
                             requests.post(telemetry_url, json=payload, timeout=0.1)
                     except Exception:

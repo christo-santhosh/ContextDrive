@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import '../engine/risk_engine.dart';
@@ -83,11 +82,25 @@ class RiskManager extends ChangeNotifier {
   Timer? _evaluationTimer;
   bool _isStarted = false;
 
-  // Track last CARLA coords to avoid spamming APIs
-  double? _lastCarlaLat;
-  double? _lastCarlaLon;
+  int _sessionToken = 0;
+  bool _wasCarlaRunning = false;
 
-  RiskManager(this._gpsService, this._weatherService, this._timeContextService, this._carlaDemoService);
+  RiskManager(this._gpsService, this._weatherService, this._timeContextService, this._carlaDemoService) {
+    _wasCarlaRunning = _carlaDemoService.isRunning;
+    _carlaDemoService.addListener(_onCarlaServiceChanged);
+  }
+
+  void _onCarlaServiceChanged() {
+    if (_wasCarlaRunning != _carlaDemoService.isRunning) {
+      _wasCarlaRunning = _carlaDemoService.isRunning;
+      _sessionToken++;
+      _elevatedLevel = null;
+      _elevatedStartTime = null;
+      _cooldownEndTime = null;
+      _riskAlertService.clearActiveAlert();
+      notifyListeners();
+    }
+  }
 
   Future<void> start({required bool locationAvailable}) async {
     if (_isStarted) return;
@@ -97,9 +110,10 @@ class RiskManager extends ChangeNotifier {
 
     if (locationAvailable) {
       _positionSubscription = _gpsService.getPositionStream().listen((pos) {
-        // Ignore real GPS updates if CARLA is actively streaming valid telemetry
-        if (_isCarlaActive()) return;
+        // Strict mode isolation: ignore real GPS updates when CARLA mode is active
+        if (_carlaDemoService.isRunning) return;
 
+        final currentToken = _sessionToken;
         _latestSpeedReading = _gpsService.processPosition(pos);
         if (_latestSpeedReading!.isValid) {
           _currentSpeed = _latestSpeedReading!.valueKmh;
@@ -113,6 +127,8 @@ class RiskManager extends ChangeNotifier {
         _speedLimitService.updateSpeedLimit(pos.latitude, pos.longitude);
 
         _weatherService.getWeather(pos.latitude, pos.longitude).then((weather) {
+          // Discard stale callback if session transitioned or CARLA mode was enabled
+          if (currentToken != _sessionToken || _carlaDemoService.isRunning) return;
           _isRaining = weather.isRaining;
           _visibility = weather.visibilityMeters;
           _isWeatherAvailable = weather.isAvailable;
@@ -123,38 +139,8 @@ class RiskManager extends ChangeNotifier {
 
     // Evaluate risk periodically based on latest state
     _evaluationTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      _processCarlaUpdates();
       _evaluateRisk();
     });
-  }
-
-  bool _isCarlaActive() {
-    return _carlaDemoService.isRunning && 
-           _carlaDemoService.latestTelemetry != null && 
-           !_carlaDemoService.latestTelemetry!.isStale;
-  }
-
-  void _processCarlaUpdates() {
-    if (!_isCarlaActive()) return;
-    
-    final tele = _carlaDemoService.latestTelemetry!;
-    
-    // Only fetch new external API data if CARLA vehicle moved significantly (e.g. > 100m)
-    // For simplicity, checking if it changed at all, but throttling should exist in the services.
-    if (_lastCarlaLat != tele.latitude || _lastCarlaLon != tele.longitude) {
-      _lastCarlaLat = tele.latitude;
-      _lastCarlaLon = tele.longitude;
-      
-      _timeContextService.updateLocation(tele.latitude, tele.longitude);
-      _speedLimitService.updateSpeedLimit(tele.latitude, tele.longitude);
-      
-      _weatherService.getWeather(tele.latitude, tele.longitude).then((weather) {
-        _isRaining = weather.isRaining;
-        _visibility = weather.visibilityMeters;
-        _isWeatherAvailable = weather.isAvailable;
-        _weatherLastUpdated = weather.lastUpdated;
-      });
-    }
   }
 
   void updateDetections(List<DetectedObject> detections) {
@@ -180,65 +166,22 @@ class RiskManager extends ChangeNotifier {
 
   void _evaluateRisk() {
     final now = DateTime.now();
-    
+
     double? speedForRisk;
     String? gpsReason;
     bool isErratic = false;
+    bool isNightEffective = false;
+    bool isRainingEffective = false;
+    int? speedLimitEffective;
+    bool weatherAvailable = false;
+    String? visibilityCategory;
+    VisibilityAssessment visibilityAssessment;
 
-    if (overrideSpeed != null) {
-      speedForRisk = overrideSpeed;
-      gpsReason = "Manual Override";
-    } else if (_isCarlaActive()) {
-      final tele = _carlaDemoService.latestTelemetry!;
-      speedForRisk = tele.speedKmh;
-      gpsReason = "CARLA Simulation Active";
-    } else {
-      // Use Real Physical Sensors
-      if (_consecutiveInvalidReadings >= 3) {
-        speedForRisk = null;
-        gpsReason = _latestSpeedReading?.rejectionReason;
-      } else if (_lastSpeedTimestamp == null || now.difference(_lastSpeedTimestamp!).inSeconds > 5) {
-        speedForRisk = null;
-        gpsReason = "Stale GNSS timestamp";
-      } else {
-        speedForRisk = _currentSpeed;
-      }
-    }
-
-    if (overrideIsErratic != null) {
-      isErratic = overrideIsErratic!;
-    } else if (_isCarlaActive()) {
-      final tele = _carlaDemoService.latestTelemetry!;
-      if (tele.isErratic != null) {
-        isErratic = tele.isErratic!;
-      } else {
-        final horizontalMagnitude = sqrt(tele.accelX * tele.accelX + tele.accelY * tele.accelY);
-        isErratic = horizontalMagnitude > 4.5;
-      }
-    } else {
-      isErratic = _imuService.isErratic;
-    }
-
-    final isNightCalculated = _timeContextService.isNight(now);
-    final isNightEffective = overrideIsNight ?? 
-        ((_isCarlaActive() && _carlaDemoService.latestTelemetry!.isNight != null) 
-            ? _carlaDemoService.latestTelemetry!.isNight! 
-            : isNightCalculated);
-
-    final isRainingEffective = overrideIsRaining ?? 
-        ((_isCarlaActive() && _carlaDemoService.latestTelemetry!.isRaining != null) 
-            ? _carlaDemoService.latestTelemetry!.isRaining! 
-            : _isRaining);
-
-    final speedLimitEffective = overrideSpeedLimit ?? 
-        ((_isCarlaActive() && _carlaDemoService.latestTelemetry!.speedLimit != null) 
-            ? _carlaDemoService.latestTelemetry!.speedLimit 
-            : _speedLimitService.currentSpeedLimit);
-
+    // Track visual detections
     double closestDist = 1.0;
     int nearbyVehiclesCount = 0;
     TrackedObject? closestTrack;
-    
+
     for (var track in _currentTracks) {
       final estimatedDistance = _relativeDistance(track.proximity);
       if (track.type == RoadObjectType.roadVehicle) {
@@ -252,9 +195,120 @@ class RiskManager extends ChangeNotifier {
 
     bool isClosingIn = closestTrack?.closingRate == ClosingRate.closing;
 
-    bool weatherAvailable = _isWeatherAvailable;
-    if (_weatherLastUpdated != null && now.difference(_weatherLastUpdated!).inMinutes > 30) {
-      weatherAvailable = false;
+    if (overrideSpeed != null) {
+      // ── Manual Overrides ──
+      speedForRisk = overrideSpeed;
+      gpsReason = "Manual Override";
+      isErratic = overrideIsErratic ?? false;
+      isNightEffective = overrideIsNight ?? _timeContextService.isNight(now);
+      isRainingEffective = overrideIsRaining ?? _isRaining;
+      speedLimitEffective = overrideSpeedLimit ?? _speedLimitService.currentSpeedLimit;
+      weatherAvailable = _isWeatherAvailable;
+      visibilityAssessment = ContextVector.calculateVisibility(
+        isNight: isNightEffective,
+        isRaining: isRainingEffective,
+        visibilityMeters: _visibility,
+        isWeatherAvailable: weatherAvailable,
+      );
+    } else if (_carlaDemoService.isRunning) {
+      // ── CARLA Mode (Strict Isolation) ──
+      if (_carlaDemoService.isCarlaActive) {
+        final tele = _carlaDemoService.latestTelemetry!;
+        speedForRisk = tele.speedKmh;
+        gpsReason = "CARLA Active (#${tele.sequenceNumber ?? tele.simulationFrame ?? 0})";
+
+        if (overrideIsErratic != null) {
+          isErratic = overrideIsErratic!;
+        } else if (tele.isErratic != null) {
+          isErratic = tele.isErratic!;
+        } else {
+          // Uncalibrated Euclidean magnitude heuristic
+          isErratic = tele.accelMagnitude > 4.5;
+        }
+
+        isNightEffective = overrideIsNight ?? (tele.isNight ?? false);
+        isRainingEffective = overrideIsRaining ?? (tele.isRaining ?? false);
+        speedLimitEffective = overrideSpeedLimit ?? tele.speedLimit;
+        visibilityCategory = tele.visibilityCategory;
+        weatherAvailable = (tele.isRaining != null || tele.visibilityCategory != null);
+
+        visibilityAssessment = ContextVector.calculateVisibility(
+          isNight: isNightEffective,
+          isRaining: isRainingEffective,
+          visibilityMeters: null,
+          isWeatherAvailable: weatherAvailable,
+          visibilityCategory: visibilityCategory,
+        );
+      } else {
+        // CARLA is Paused or Disconnected: Suppress new alerts and mark assessment stale
+        final status = _carlaDemoService.connectionStatus;
+        final reasonStr = (status == CarlaConnectionStatus.paused)
+            ? "CARLA Simulation Paused"
+            : "CARLA Disconnected";
+
+        _lastContextVector = ContextVector(
+          currentSpeed: null,
+          currentSpeedLimit: null,
+          isRaining: false,
+          isNight: false,
+          visibility: 10000,
+          isWeatherAvailable: false,
+          visibilityAssessment: VisibilityAssessment.unknown,
+          nearbyVehicles: nearbyVehiclesCount,
+          closestVehicleDistance: closestDist,
+          isClosingIn: false,
+          isErraticDriving: false,
+          gpsQualityReason: reasonStr,
+        );
+
+        final newAssessment = RiskAssessment(
+          level: RiskLevel.limited,
+          howExplanation: "Simulation paused or telemetry disconnected.",
+          whyExplanation: "Telemetry stream inactive. Assistance features limited.",
+          recommendation: "Verify CARLA simulation running and telemetry stream connected.",
+          primaryReason: reasonStr,
+          evidenceReasons: [reasonStr],
+          dataQuality: [reasonStr],
+          isStale: true,
+        );
+
+        // Suppress new alerts based on unavailable/stale data
+        _elevatedLevel = null;
+        _elevatedStartTime = null;
+        _cooldownEndTime = null;
+        _currentAssessment = newAssessment;
+        _riskAlertService.clearActiveAlert();
+        notifyListeners();
+        return;
+      }
+    } else {
+      // ── Physical Mode (Real Sensors) ──
+      if (_consecutiveInvalidReadings >= 3) {
+        speedForRisk = null;
+        gpsReason = _latestSpeedReading?.rejectionReason;
+      } else if (_lastSpeedTimestamp == null || now.difference(_lastSpeedTimestamp!).inSeconds > 5) {
+        speedForRisk = null;
+        gpsReason = "Stale GNSS timestamp";
+      } else {
+        speedForRisk = _currentSpeed;
+      }
+
+      isErratic = overrideIsErratic ?? _imuService.isErratic;
+      isNightEffective = overrideIsNight ?? _timeContextService.isNight(now);
+      isRainingEffective = overrideIsRaining ?? _isRaining;
+      speedLimitEffective = overrideSpeedLimit ?? _speedLimitService.currentSpeedLimit;
+
+      weatherAvailable = _isWeatherAvailable;
+      if (_weatherLastUpdated != null && now.difference(_weatherLastUpdated!).inMinutes > 30) {
+        weatherAvailable = false;
+      }
+
+      visibilityAssessment = ContextVector.calculateVisibility(
+        isNight: isNightEffective,
+        isRaining: isRainingEffective,
+        visibilityMeters: _visibility,
+        isWeatherAvailable: weatherAvailable,
+      );
     }
 
     _lastContextVector = ContextVector(
@@ -264,6 +318,8 @@ class RiskManager extends ChangeNotifier {
       isNight: isNightEffective,
       visibility: _visibility,
       isWeatherAvailable: weatherAvailable,
+      visibilityAssessment: visibilityAssessment,
+      visibilityCategory: visibilityCategory,
       nearbyVehicles: nearbyVehiclesCount,
       closestVehicleDistance: closestDist,
       isClosingIn: isClosingIn,
@@ -272,7 +328,7 @@ class RiskManager extends ChangeNotifier {
     );
 
     final newAssessment = _riskEngine.assessRisk(_lastContextVector);
-    
+
     // Hysteresis & Cooldown Logic based on timestamps
     if (newAssessment.level == RiskLevel.high || newAssessment.level == RiskLevel.moderate) {
       if (_elevatedLevel == newAssessment.level) {
@@ -301,23 +357,23 @@ class RiskManager extends ChangeNotifier {
     } else {
       _elevatedLevel = null;
       _elevatedStartTime = null;
-      
+
       bool canDropRisk = _cooldownEndTime == null || now.isAfter(_cooldownEndTime!);
-      
+
       if (nearbyVehiclesCount == 0) {
         canDropRisk = true;
         _cooldownEndTime = null;
       }
-      
+
       if (canDropRisk) {
-        if (_currentAssessment.level != newAssessment.level || 
+        if (_currentAssessment.level != newAssessment.level ||
             _currentAssessment.howExplanation != newAssessment.howExplanation) {
           _currentAssessment = newAssessment;
           _riskAlertService.clearActiveAlert();
         }
       }
     }
-    
+
     notifyListeners();
   }
 
@@ -353,6 +409,7 @@ class RiskManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _carlaDemoService.removeListener(_onCarlaServiceChanged);
     _imuService.stop();
     _positionSubscription?.cancel();
     _evaluationTimer?.cancel();
