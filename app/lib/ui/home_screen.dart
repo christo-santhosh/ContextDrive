@@ -7,6 +7,7 @@ import '../models/detected_object.dart';
 import '../models/app_state.dart';
 import '../models/context_vector.dart';
 import '../managers/risk_manager.dart';
+import '../services/carla_demo_service.dart';
 import 'debug_settings_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -225,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       borderRadius: BorderRadius.circular(24),
       child: YOLOView(
         modelPath: 'yolov8n',
+        task: YOLOTask.detect,
         controller: _yoloController,
         onModelLoad: (path, task) {
           if (mounted) {
@@ -268,6 +270,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('ContextDrive'),
         actions: [
+          Consumer<CarlaDemoService>(
+            builder: (context, carla, _) {
+              return TextButton.icon(
+                style: TextButton.styleFrom(
+                  backgroundColor: carla.isRunning 
+                      ? Colors.green.withValues(alpha: 0.2) 
+                      : Colors.white.withValues(alpha: 0.05),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: carla.isRunning ? Colors.greenAccent : Colors.white24,
+                    ),
+                  ),
+                ),
+                icon: Icon(
+                  carla.isRunning ? Icons.cloud_done : Icons.cloud_off,
+                  size: 16,
+                  color: carla.isRunning ? Colors.greenAccent : Colors.white54,
+                ),
+                label: Text(
+                  carla.isRunning 
+                      ? (carla.packetsReceived > 0 ? '${carla.packetsReceived} pkts' : 'CARLA ON') 
+                      : 'CARLA OFF',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: carla.isRunning ? Colors.greenAccent : Colors.white60,
+                  ),
+                ),
+                onPressed: () {
+                  if (carla.isRunning) {
+                    carla.stop();
+                  } else {
+                    carla.start();
+                  }
+                },
+              );
+            },
+          ),
+          const SizedBox(width: 8),
           IconButton(
             tooltip: 'Debug Settings',
             icon: const Icon(Icons.bug_report),

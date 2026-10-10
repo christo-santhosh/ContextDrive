@@ -175,6 +175,14 @@ class YOLOModelResolver {
     for (final model in _officialModels) {
       if (model.id == modelId) return model;
     }
+    // Map common aliases (yolov8n, yolo11n) to the official nano detect model
+    if (modelId == 'yolov8n' || modelId == 'yolo11n' || modelId == 'yolo') {
+      for (final model in _officialModels) {
+        if (model.task == YOLOTask.detect && model.id.contains('n')) {
+          return model;
+        }
+      }
+    }
     return null;
   }
 

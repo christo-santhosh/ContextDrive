@@ -284,6 +284,9 @@ def main():
     parser.add_argument('--host', default='127.0.0.1', help='CARLA server IP (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=2000, help='CARLA server Port (default: 2000)')
     parser.add_argument('--res', default='1280x720', help='Window resolution, e.g. 1280x720 or 1600x900 (default: 1280x720)')
+    parser.add_argument('--stream', action='store_true', help='Stream driving telemetry live to ContextDrive app')
+    parser.add_argument('--phone', default='192.168.43.1', help='Phone IP running ContextDrive app (default: 192.168.43.1)')
+    parser.add_argument('--stream-port', type=int, default=8080, help='ContextDrive app port (default: 8080)')
     args = parser.parse_args()
 
     try:
@@ -336,6 +339,40 @@ def main():
         # ── Camera ──
         print("[STEP] Attaching camera...")
         camera_manager = CameraManager(ego_vehicle, world, width, height, VIEW_FOV)
+
+        # ── Live Telemetry Streamer Thread (Optional) ──
+        stream_active = [args.stream]
+        if args.stream:
+            import requests
+            telemetry_url = f"http://{args.phone}:{args.stream_port}/telemetry"
+            print(f"[OK] Live telemetry streamer active -> {telemetry_url}")
+
+            def _stream_worker():
+                carla_map = world.get_map()
+                while stream_active[0]:
+                    try:
+                        if ego_vehicle and ego_vehicle.is_alive:
+                            vel = ego_vehicle.get_velocity()
+                            cur_speed = 3.6 * math.sqrt(vel.x**2 + vel.y**2 + vel.z**2)
+                            accel = ego_vehicle.get_acceleration()
+                            loc = ego_vehicle.get_transform().location
+                            geo = carla_map.transform_to_geolocation(loc)
+
+                            payload = {
+                                "speed": round(cur_speed, 2),
+                                "latitude": round(geo.latitude, 6),
+                                "longitude": round(geo.longitude, 6),
+                                "accelX": round(accel.x, 3),
+                                "accelY": round(accel.y, 3),
+                                "accelZ": round(accel.z, 3),
+                            }
+                            requests.post(telemetry_url, json=payload, timeout=0.1)
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
+
+            t = threading.Thread(target=_stream_worker, daemon=True)
+            t.start()
 
         print("\n=======================================================")
         print(" ContextDrive -- Manual Driving Rig Active")
@@ -467,6 +504,8 @@ def main():
         print("\n[INFO] Stopped by user.")
     finally:
         print("\n[STEP] Cleaning up resources...")
+        if args.stream:
+            stream_active[0] = False
         if camera_manager:
             camera_manager.destroy()
         if spawned_by_us:

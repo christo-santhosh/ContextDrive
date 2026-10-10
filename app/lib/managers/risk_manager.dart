@@ -63,6 +63,13 @@ class RiskManager extends ChangeNotifier {
   bool _isRaining = false;
   int _visibility = 10000;
 
+  // Manual overrides from DebugSettingsSheet
+  double? overrideSpeed;
+  bool? overrideIsRaining;
+  bool? overrideIsNight;
+  bool? overrideIsErratic;
+  int? overrideSpeedLimit;
+
   List<TrackedObject> _currentTracks = [];
 
   DateTime? _elevatedStartTime;
@@ -178,15 +185,13 @@ class RiskManager extends ChangeNotifier {
     String? gpsReason;
     bool isErratic = false;
 
-    if (_isCarlaActive()) {
-      // Use raw CARLA measurements
+    if (overrideSpeed != null) {
+      speedForRisk = overrideSpeed;
+      gpsReason = "Manual Override";
+    } else if (_isCarlaActive()) {
       final tele = _carlaDemoService.latestTelemetry!;
       speedForRisk = tele.speedKmh;
       gpsReason = "CARLA Simulation Active";
-      
-      // Calculate erratic driving purely from raw CARLA IMU data (horizontal magnitude > 4.5 m/s^2)
-      final horizontalMagnitude = sqrt(tele.accelX * tele.accelX + tele.accelY * tele.accelY);
-      isErratic = horizontalMagnitude > 4.5;
     } else {
       // Use Real Physical Sensors
       if (_consecutiveInvalidReadings >= 3) {
@@ -198,10 +203,37 @@ class RiskManager extends ChangeNotifier {
       } else {
         speedForRisk = _currentSpeed;
       }
+    }
+
+    if (overrideIsErratic != null) {
+      isErratic = overrideIsErratic!;
+    } else if (_isCarlaActive()) {
+      final tele = _carlaDemoService.latestTelemetry!;
+      if (tele.isErratic != null) {
+        isErratic = tele.isErratic!;
+      } else {
+        final horizontalMagnitude = sqrt(tele.accelX * tele.accelX + tele.accelY * tele.accelY);
+        isErratic = horizontalMagnitude > 4.5;
+      }
+    } else {
       isErratic = _imuService.isErratic;
     }
 
-    final isNight = _timeContextService.isNight(now);
+    final isNightCalculated = _timeContextService.isNight(now);
+    final isNightEffective = overrideIsNight ?? 
+        ((_isCarlaActive() && _carlaDemoService.latestTelemetry!.isNight != null) 
+            ? _carlaDemoService.latestTelemetry!.isNight! 
+            : isNightCalculated);
+
+    final isRainingEffective = overrideIsRaining ?? 
+        ((_isCarlaActive() && _carlaDemoService.latestTelemetry!.isRaining != null) 
+            ? _carlaDemoService.latestTelemetry!.isRaining! 
+            : _isRaining);
+
+    final speedLimitEffective = overrideSpeedLimit ?? 
+        ((_isCarlaActive() && _carlaDemoService.latestTelemetry!.speedLimit != null) 
+            ? _carlaDemoService.latestTelemetry!.speedLimit 
+            : _speedLimitService.currentSpeedLimit);
 
     double closestDist = 1.0;
     int nearbyVehiclesCount = 0;
@@ -227,9 +259,9 @@ class RiskManager extends ChangeNotifier {
 
     _lastContextVector = ContextVector(
       currentSpeed: speedForRisk,
-      currentSpeedLimit: _speedLimitService.currentSpeedLimit,
-      isRaining: _isRaining,
-      isNight: isNight,
+      currentSpeedLimit: speedLimitEffective,
+      isRaining: isRainingEffective,
+      isNight: isNightEffective,
       visibility: _visibility,
       isWeatherAvailable: weatherAvailable,
       nearbyVehicles: nearbyVehiclesCount,
