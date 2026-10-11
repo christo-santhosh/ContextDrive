@@ -1246,7 +1246,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   assessment.advisories.isNotEmpty
                       ? 'Advisory: ${assessment.advisories.first}'
                       : 'Context: ${assessment.contextModifiers.join(" · ")}',
-                  style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 11),
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
