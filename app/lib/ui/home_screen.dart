@@ -1,4 +1,5 @@
-import 'dart:math';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -31,9 +32,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   YOLO? _carlaYolo;
   bool _isCarlaYoloInitialized = false;
   bool _isProcessingCarlaFrame = false;
+  // These are tracker-smoothed rectangles. They intentionally remain visible
+  // between video frames so the overlay does not blink at the CARLA stream
+  // frame rate while inference runs at a lower rate.
   List<DetectedObject> _carlaDetections = [];
   int? _lastProcessedSequence;
-  int? _carlaDetectionSequence;
   CarlaCameraStreamService? _streamService;
 
   @override
@@ -270,7 +273,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final box = _validNormalizedBox(yoloRes.normalizedBox);
             if (box == null) continue;
             mapped.add(DetectedObject(
-              label: yoloRes.className,
+              // A class may oscillate between car/truck/bus in adjacent YOLO
+              // frames. Risk and display tracking need a stable vehicle
+              // identity, not the class name shown to a user.
+              label: 'road_vehicle',
               confidence: yoloRes.confidence,
               boundingBox: box,
               type: type,
@@ -282,7 +288,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted &&
           _perceptionSource == PerceptionSource.carlaVirtualCamera &&
           !frame.isStale) {
-        context.read<RiskManager>().updateDetections(
+        final riskManager = context.read<RiskManager>();
+        riskManager.updateDetections(
           mapped,
           // The tracker timeline is based on when this image arrived, not
           // when inference happened to complete. This keeps a slow inference
@@ -294,10 +301,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           frameAge: frameAge,
         );
         setState(() {
-          _carlaDetections = (_streamService?.latestFrame?.sequenceNumber == frame.sequenceNumber)
-              ? mapped
-              : [];
-          _carlaDetectionSequence = frame.sequenceNumber;
+          // Draw the ObjectTracker's EMA-smoothed boxes rather than raw YOLO
+          // rectangles. A short missed-detection grace avoids visual blinking;
+          // stale-camera protection still removes all overlays promptly.
+          _carlaDetections = riskManager.currentTracks
+              .where((track) =>
+                  track.type == RoadObjectType.roadVehicle &&
+                  track.framesMissed <= 2)
+              .map((track) => DetectedObject(
+                    label: track.label,
+                    confidence: track.confidence,
+                    boundingBox: track.smoothedBox,
+                    type: track.type,
+                  ))
+              .toList(growable: false);
         });
       }
     } catch (e) {
@@ -327,7 +344,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _perceptionSource = PerceptionSource.carlaVirtualCamera;
       _carlaDetections = [];
-      _carlaDetectionSequence = null;
       _lastProcessedSequence = null;
     });
     // Pause physical camera on Android
@@ -361,7 +377,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _perceptionSource = PerceptionSource.phoneCamera;
       _carlaDetections = [];
-      _carlaDetectionSequence = null;
       _lastProcessedSequence = null;
       _isProcessingCarlaFrame = false;
     });
@@ -463,9 +478,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               CustomPaint(
                 painter: BoundingBoxPainter(
-                  detections: _carlaDetectionSequence == frame.sequenceNumber
+                  detections: status == CarlaStreamStatus.connected && !frame.isStale
                       ? _carlaDetections
                       : const [],
+                  sourceSize: Size(frame.width.toDouble(), frame.height.toDouble()),
                 ),
               ),
               if (status == CarlaStreamStatus.stale)
@@ -1245,54 +1261,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
 class BoundingBoxPainter extends CustomPainter {
   final List<DetectedObject> detections;
+  final Size sourceSize;
 
-  BoundingBoxPainter({required this.detections});
+  BoundingBoxPainter({required this.detections, required this.sourceSize});
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (detections.isEmpty) return;
+    if (detections.isEmpty || sourceSize.isEmpty) return;
 
     final boxPaint = Paint()
       ..color = const Color(0xFF00FF88)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
 
-    final bgPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.75)
-      ..style = PaintingStyle.fill;
-
-    const textStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 11,
-      fontWeight: FontWeight.bold,
-    );
+    // Match Image.memory(fit: BoxFit.cover), including the centre crop. The
+    // prior direct widget-size mapping did not account for this transform.
+    final scale = math.max(size.width / sourceSize.width, size.height / sourceSize.height);
+    final renderedWidth = sourceSize.width * scale;
+    final renderedHeight = sourceSize.height * scale;
+    final offsetX = (size.width - renderedWidth) / 2;
+    final offsetY = (size.height - renderedHeight) / 2;
 
     for (final det in detections) {
       final rect = Rect.fromLTRB(
-        det.boundingBox.left * size.width,
-        det.boundingBox.top * size.height,
-        det.boundingBox.right * size.width,
-        det.boundingBox.bottom * size.height,
+        offsetX + det.boundingBox.left * renderedWidth,
+        offsetY + det.boundingBox.top * renderedHeight,
+        offsetX + det.boundingBox.right * renderedWidth,
+        offsetY + det.boundingBox.bottom * renderedHeight,
       );
 
       final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
       canvas.drawRRect(rrect, boxPaint);
-
-      final labelText = '${det.label} ${(det.confidence * 100).toInt()}%';
-      final span = TextSpan(text: labelText, style: textStyle);
-      final tp = TextPainter(
-        text: span,
-        textDirection: TextDirection.ltr,
-      )..layout();
-
-      final labelRect = Rect.fromLTWH(
-        rect.left,
-        max(0.0, rect.top - tp.height - 4),
-        tp.width + 8,
-        tp.height + 4,
-      );
-      canvas.drawRRect(RRect.fromRectAndRadius(labelRect, const Radius.circular(4)), bgPaint);
-      tp.paint(canvas, Offset(labelRect.left + 4, labelRect.top + 2));
     }
   }
 
