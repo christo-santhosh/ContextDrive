@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../managers/risk_manager.dart';
 import '../services/carla_demo_service.dart';
+import '../services/carla_camera_stream_service.dart';
 import '../services/weather_service.dart';
 
 class DebugSettingsSheet extends StatefulWidget {
@@ -334,6 +335,117 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
                   ],
                 ],
               ),
+            ),
+            const SizedBox(height: 12),
+            // ── Virtual Camera USB Stream Section ──
+            Consumer<CarlaCameraStreamService>(
+              builder: (context, videoService, _) {
+                Color statusColor;
+                String statusLabel;
+                switch (videoService.status) {
+                  case CarlaStreamStatus.connected:
+                    statusColor = Colors.greenAccent;
+                    statusLabel = '● Streaming (${videoService.currentFps.toStringAsFixed(1)} FPS)';
+                    break;
+                  case CarlaStreamStatus.stale:
+                    statusColor = Colors.amberAccent;
+                    statusLabel = '▲ Stream Stale (>1s)';
+                    break;
+                  case CarlaStreamStatus.listening:
+                    statusColor = Colors.blueAccent;
+                    statusLabel = '○ Listening on port ${videoService.port}';
+                    break;
+                  case CarlaStreamStatus.disconnected:
+                    statusColor = Colors.redAccent;
+                    statusLabel = '✕ Disconnected';
+                    break;
+                  case CarlaStreamStatus.idle:
+                    statusColor = Colors.white54;
+                    statusLabel = '○ Stream Server Idle';
+                    break;
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: videoService.isRunning
+                        ? Colors.cyanAccent.withValues(alpha: 0.08)
+                        : Colors.white.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: videoService.isRunning
+                          ? Colors.cyanAccent.withValues(alpha: 0.3)
+                          : Colors.white12,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.videocam, color: Colors.cyanAccent, size: 18),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'CARLA Virtual Camera (USB)',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: videoService.isRunning,
+                            activeColor: Colors.cyanAccent,
+                            onChanged: (enabled) async {
+                              if (enabled) {
+                                await videoService.start();
+                              } else {
+                                await videoService.stop();
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        videoService.statusMessage,
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      if (videoService.isRunning) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Frames: ${videoService.framesReceived} | Dropped: ${videoService.framesDropped}',
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Forward USB port with ADB:\n'
+                          'adb reverse tcp:8088 tcp:8088',
+                          style: TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
             ),
           ],
         );

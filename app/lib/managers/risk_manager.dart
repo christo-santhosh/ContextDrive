@@ -115,6 +115,8 @@ class RiskManager extends ChangeNotifier {
     _pendingSince = null;
     _cooldownUntil = null;
     _resetMotion();
+    _tracker.reset();
+    _currentTracks = [];
     _riskAlertService.clearActiveAlert();
     notifyListeners();
   }
@@ -182,6 +184,12 @@ class RiskManager extends ChangeNotifier {
 
   void updateDetections(List<DetectedObject> detections) {
     _currentTracks = _tracker.updateTracks(detections);
+  }
+
+  void resetTracking() {
+    _tracker.reset();
+    _currentTracks = [];
+    notifyListeners();
   }
 
   void setVoiceAlertsEnabled(bool enabled) {

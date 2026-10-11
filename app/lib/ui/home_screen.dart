@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -8,7 +9,13 @@ import '../models/app_state.dart';
 import '../models/context_vector.dart';
 import '../managers/risk_manager.dart';
 import '../services/carla_demo_service.dart';
+import '../services/carla_camera_stream_service.dart';
 import 'debug_settings_sheet.dart';
+
+enum PerceptionSource {
+  phoneCamera,
+  carlaVirtualCamera,
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,12 +27,26 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final YOLOViewController _yoloController = YOLOViewController();
 
+  PerceptionSource _perceptionSource = PerceptionSource.phoneCamera;
+  YOLO? _carlaYolo;
+  bool _isCarlaYoloInitialized = false;
+  bool _isProcessingCarlaFrame = false;
+  List<DetectedObject> _carlaDetections = [];
+  int? _lastProcessedSequence;
+  CarlaCameraStreamService? _streamService;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startAppFlow();
+      try {
+        _streamService = context.read<CarlaCameraStreamService>();
+        _streamService?.addListener(_onCarlaStreamFrame);
+      } catch (_) {
+        // Stream service optional in test harness
+      }
     });
   }
 
@@ -33,15 +54,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
-      _yoloController.pause();
+      if (_perceptionSource == PerceptionSource.phoneCamera) {
+        _yoloController.pause();
+      }
     } else if (state == AppLifecycleState.resumed) {
-      _yoloController.resume();
+      if (_perceptionSource == PerceptionSource.phoneCamera) {
+        _yoloController.resume();
+      }
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _streamService?.removeListener(_onCarlaStreamFrame);
     _yoloController.dispose();
     super.dispose();
   }
@@ -203,46 +229,323 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  void _onCarlaStreamFrame() {
+    if (!mounted || _perceptionSource != PerceptionSource.carlaVirtualCamera) return;
+    final streamService = _streamService ?? context.read<CarlaCameraStreamService>();
+    final frame = streamService.latestFrame;
+    if (frame == null) return;
+    if (frame.sequenceNumber == _lastProcessedSequence) return;
+    if (_isProcessingCarlaFrame) return;
+
+    _lastProcessedSequence = frame.sequenceNumber;
+    _isProcessingCarlaFrame = true;
+    _runCarlaYoloInference(frame);
+  }
+
+  Future<void> _runCarlaYoloInference(CarlaVideoFrame frame) async {
+    try {
+      if (_carlaYolo == null || !_isCarlaYoloInitialized) {
+        _carlaYolo = YOLO(modelPath: 'yolo26n', task: YOLOTask.detect);
+        await _carlaYolo!.loadModel();
+        _isCarlaYoloInitialized = true;
+      }
+      final results = await _carlaYolo!.predict(frame.imageBytes);
+      final rawDetections = results['detections'] as List<dynamic>? ?? [];
+      List<DetectedObject> mapped = [];
+      for (final item in rawDetections) {
+        if (item is Map) {
+          final yoloRes = YOLOResult.fromMap(item);
+          RoadObjectType type = RoadObjectType.ignored;
+          if (yoloRes.className == 'car' ||
+              yoloRes.className == 'motorcycle' ||
+              yoloRes.className == 'bus' ||
+              yoloRes.className == 'truck') {
+            type = RoadObjectType.roadVehicle;
+          }
+          if (type != RoadObjectType.ignored) {
+            mapped.add(DetectedObject(
+              label: yoloRes.className,
+              confidence: yoloRes.confidence,
+              boundingBox: yoloRes.normalizedBox,
+              type: type,
+            ));
+          }
+        }
+      }
+      if (mounted && _perceptionSource == PerceptionSource.carlaVirtualCamera) {
+        context.read<RiskManager>().updateDetections(mapped);
+        setState(() {
+          _carlaDetections = mapped;
+        });
+      }
+    } catch (e) {
+      debugPrint('CARLA YOLO inference error: $e');
+    } finally {
+      _isProcessingCarlaFrame = false;
+    }
+  }
+
+  Future<void> _togglePerceptionSource() async {
+    if (_perceptionSource == PerceptionSource.phoneCamera) {
+      await _switchToCarlaCamera();
+    } else {
+      await _switchToPhoneCamera();
+    }
+  }
+
+  Future<void> _switchToCarlaCamera() async {
+    final riskManager = context.read<RiskManager>();
+    final stream = context.read<CarlaCameraStreamService>();
+
+    setState(() {
+      _perceptionSource = PerceptionSource.carlaVirtualCamera;
+      _carlaDetections = [];
+    });
+    // Pause physical camera on Android
+    try {
+      await _yoloController.pause();
+    } catch (e) {
+      debugPrint('Error pausing YOLO controller: $e');
+    }
+    // Clear tracking history to prevent old proximity state from carrying over
+    riskManager.resetTracking();
+
+    // Start stream service if not running
+    if (!stream.isRunning) {
+      await stream.start();
+    }
+
+    // Pre-initialize standalone YOLO model for external inference
+    if (_carlaYolo == null || !_isCarlaYoloInitialized) {
+      try {
+        _carlaYolo = YOLO(modelPath: 'yolo26n', task: YOLOTask.detect);
+        await _carlaYolo!.loadModel();
+        _isCarlaYoloInitialized = true;
+      } catch (e) {
+        debugPrint('Error loading standalone YOLO model: $e');
+      }
+    }
+  }
+
+  Future<void> _switchToPhoneCamera() async {
+    final riskManager = context.read<RiskManager>();
+    setState(() {
+      _perceptionSource = PerceptionSource.phoneCamera;
+      _carlaDetections = [];
+      _isProcessingCarlaFrame = false;
+    });
+    // Clear tracking history
+    riskManager.resetTracking();
+    // Resume physical camera
+    try {
+      await _yoloController.resume();
+    } catch (e) {
+      debugPrint('Error resuming YOLO controller: $e');
+    }
+  }
+
   Widget _buildCameraFeed() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
-      child: YOLOView(
-        modelPath: 'yolo26n',
-        task: YOLOTask.detect,
-        controller: _yoloController,
-        onModelLoad: (path, task) {
-          if (mounted) {
-             // Model is successfully loaded and running
-             context.read<AppStateModel>().setState(AppState.ready);
-          }
-        },
-        onModelError: (error, path, task) {
-          if (mounted) {
-             context.read<AppStateModel>().setState(AppState.modelFailed, error: "Failed to load model: $error");
-          }
-        },
-        onResult: (results) {
-          if (!mounted) return;
-          List<DetectedObject> mappedDetections = [];
-          for (var r in results) {
-            RoadObjectType type = RoadObjectType.ignored;
-            if (r.className == 'car' || r.className == 'motorcycle' || 
-                       r.className == 'bus' || r.className == 'truck') {
-              type = RoadObjectType.roadVehicle;
-            }
-
-            if (type != RoadObjectType.ignored) {
-              mappedDetections.add(DetectedObject(
-                label: r.className,
-                confidence: r.confidence,
-                boundingBox: r.normalizedBox,
-                type: type,
-              ));
-            }
-          }
-          context.read<RiskManager>().updateDetections(mappedDetections);
-        },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Offstage(
+            offstage: _perceptionSource != PerceptionSource.phoneCamera,
+            child: _buildPhysicalCameraFeed(),
+          ),
+          if (_perceptionSource == PerceptionSource.carlaVirtualCamera)
+            _buildCarlaVirtualCameraFeed(),
+        ],
       ),
+    );
+  }
+
+  Widget _buildPhysicalCameraFeed() {
+    return YOLOView(
+      modelPath: 'yolo26n',
+      task: YOLOTask.detect,
+      controller: _yoloController,
+      onModelLoad: (path, task) {
+        if (mounted) {
+          // Model is successfully loaded and running
+          context.read<AppStateModel>().setState(AppState.ready);
+        }
+      },
+      onModelError: (error, path, task) {
+        if (mounted) {
+          context.read<AppStateModel>().setState(AppState.modelFailed, error: "Failed to load model: $error");
+        }
+      },
+      onResult: (results) {
+        if (!mounted || _perceptionSource != PerceptionSource.phoneCamera) return;
+        List<DetectedObject> mappedDetections = [];
+        for (var r in results) {
+          RoadObjectType type = RoadObjectType.ignored;
+          if (r.className == 'car' || r.className == 'motorcycle' || 
+              r.className == 'bus' || r.className == 'truck') {
+            type = RoadObjectType.roadVehicle;
+          }
+
+          if (type != RoadObjectType.ignored) {
+            mappedDetections.add(DetectedObject(
+              label: r.className,
+              confidence: r.confidence,
+              boundingBox: r.normalizedBox,
+              type: type,
+            ));
+          }
+        }
+        context.read<RiskManager>().updateDetections(mappedDetections);
+      },
+    );
+  }
+
+  Widget _buildCarlaVirtualCameraFeed() {
+    return Consumer<CarlaCameraStreamService>(
+      builder: (context, streamService, _) {
+        final frame = streamService.latestFrame;
+        final status = streamService.status;
+
+        Widget content;
+        if (frame != null) {
+          content = Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.memory(
+                frame.imageBytes,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
+              CustomPaint(
+                painter: BoundingBoxPainter(detections: _carlaDetections),
+              ),
+              if (status == CarlaStreamStatus.stale)
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.warning_amber, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'CARLA CAMERA DATA STALE (>1s)',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        } else {
+          content = Container(
+            color: const Color(0xFF10141A),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      status == CarlaStreamStatus.listening
+                          ? Icons.cable
+                          : Icons.videocam_off,
+                      size: 44,
+                      color: Colors.blueAccent,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      status == CarlaStreamStatus.listening
+                          ? 'WAITING FOR CARLA CAMERA STREAM'
+                          : 'CARLA CAMERA DISCONNECTED',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Listening on 127.0.0.1:${streamService.port}\nadb reverse tcp:${streamService.port} tcp:${streamService.port}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Stack(
+          children: [
+            content,
+            // Diagnostic HUD pill at top-right
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: status == CarlaStreamStatus.connected
+                        ? Colors.greenAccent
+                        : status == CarlaStreamStatus.stale
+                            ? Colors.amberAccent
+                            : Colors.white30,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: status == CarlaStreamStatus.connected
+                            ? Colors.greenAccent
+                            : status == CarlaStreamStatus.stale
+                                ? Colors.amberAccent
+                                : Colors.redAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'CARLA USB: ${streamService.currentFps.toStringAsFixed(1)} FPS (${_carlaDetections.length} det)',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -250,8 +553,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ContextDrive'),
+        title: const Text(
+          'ContextDrive',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        titleSpacing: 16,
         actions: [
+          // ── Perception Source Selector ──
+          IconButton(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
+            tooltip: _perceptionSource == PerceptionSource.phoneCamera
+                ? 'Perception: Phone Camera (Tap to switch to CARLA Stream)'
+                : 'Perception: CARLA Virtual Camera (Tap to switch to Phone)',
+            icon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _perceptionSource == PerceptionSource.phoneCamera
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.cyanAccent.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _perceptionSource == PerceptionSource.phoneCamera
+                      ? Colors.white24
+                      : Colors.cyanAccent,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _perceptionSource == PerceptionSource.phoneCamera
+                        ? Icons.camera_alt_outlined
+                        : Icons.videocam,
+                    size: 14,
+                    color: _perceptionSource == PerceptionSource.phoneCamera
+                        ? Colors.white70
+                        : Colors.cyanAccent,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _perceptionSource == PerceptionSource.phoneCamera ? 'PHONE' : 'CARLA',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: _perceptionSource == PerceptionSource.phoneCamera
+                          ? Colors.white70
+                          : Colors.cyanAccent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            onPressed: _togglePerceptionSource,
+          ),
+          const SizedBox(width: 4),
           Consumer<CarlaDemoService>(
             builder: (context, carla, _) {
               Color badgeBg;
@@ -887,4 +1243,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return '$hour:$minute:$second';
   }
 }
+
+class BoundingBoxPainter extends CustomPainter {
+  final List<DetectedObject> detections;
+
+  BoundingBoxPainter({required this.detections});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (detections.isEmpty) return;
+
+    final boxPaint = Paint()
+      ..color = const Color(0xFF00FF88)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+
+    final bgPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.75)
+      ..style = PaintingStyle.fill;
+
+    const textStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 11,
+      fontWeight: FontWeight.bold,
+    );
+
+    for (final det in detections) {
+      final rect = Rect.fromLTRB(
+        det.boundingBox.left * size.width,
+        det.boundingBox.top * size.height,
+        det.boundingBox.right * size.width,
+        det.boundingBox.bottom * size.height,
+      );
+
+      final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+      canvas.drawRRect(rrect, boxPaint);
+
+      final labelText = '${det.label} ${(det.confidence * 100).toInt()}%';
+      final span = TextSpan(text: labelText, style: textStyle);
+      final tp = TextPainter(
+        text: span,
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final labelRect = Rect.fromLTWH(
+        rect.left,
+        max(0.0, rect.top - tp.height - 4),
+        tp.width + 8,
+        tp.height + 4,
+      );
+      canvas.drawRRect(RRect.fromRectAndRadius(labelRect, const Radius.circular(4)), bgPaint);
+      tp.paint(canvas, Offset(labelRect.left + 4, labelRect.top + 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant BoundingBoxPainter oldDelegate) => true;
+}
+
 

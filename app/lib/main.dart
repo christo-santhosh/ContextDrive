@@ -4,6 +4,7 @@ import 'ui/home_screen.dart';
 import 'services/gps_service.dart';
 import 'services/weather_service.dart';
 import 'services/time_context_service.dart';
+import 'services/carla_camera_stream_service.dart';
 import 'services/carla_demo_service.dart';
 import 'managers/risk_manager.dart';
 import 'models/app_state.dart';
@@ -24,6 +25,7 @@ class ContextDriveApp extends StatelessWidget {
         Provider<WeatherService>(create: (_) => WeatherService()),
         Provider<TimeContextService>(create: (_) => TimeContextService()),
         ChangeNotifierProvider<CarlaDemoService>(create: (_) => CarlaDemoService()),
+        ChangeNotifierProvider<CarlaCameraStreamService>(create: (_) => CarlaCameraStreamService()),
         ChangeNotifierProvider<AppStateModel>(create: (_) => AppStateModel()),
         
         ChangeNotifierProxyProvider4<GpsService, WeatherService, TimeContextService, CarlaDemoService, RiskManager>(

@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 
 import 'package:app/managers/risk_manager.dart';
 import 'package:app/services/carla_demo_service.dart';
+import 'package:app/services/carla_camera_stream_service.dart';
 import 'package:app/services/gps_service.dart';
 import 'package:app/services/weather_service.dart';
 import 'package:app/services/time_context_service.dart';
@@ -95,6 +96,7 @@ void main() {
             Provider<WeatherService>.value(value: weatherService),
             ChangeNotifierProvider<RiskManager>.value(value: riskManager),
             ChangeNotifierProvider<CarlaDemoService>.value(value: carlaService),
+            ChangeNotifierProvider<CarlaCameraStreamService>(create: (_) => CarlaCameraStreamService()),
           ],
           child: const MaterialApp(
             home: Scaffold(
@@ -135,6 +137,7 @@ void main() {
             Provider<WeatherService>.value(value: weatherService),
             ChangeNotifierProvider<RiskManager>.value(value: riskManager),
             ChangeNotifierProvider<CarlaDemoService>.value(value: carlaService),
+            ChangeNotifierProvider<CarlaCameraStreamService>(create: (_) => CarlaCameraStreamService()),
           ],
           child: const MaterialApp(
             home: Scaffold(
@@ -192,6 +195,7 @@ void main() {
             Provider<WeatherService>.value(value: weatherService),
             Provider<TimeContextService>.value(value: timeService),
             ChangeNotifierProvider<CarlaDemoService>.value(value: carlaService),
+            ChangeNotifierProvider<CarlaCameraStreamService>(create: (_) => CarlaCameraStreamService()),
             ChangeNotifierProvider<RiskManager>.value(value: riskManager),
             ChangeNotifierProvider<AppStateModel>.value(value: appState),
           ],

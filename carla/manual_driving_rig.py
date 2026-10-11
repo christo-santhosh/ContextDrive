@@ -20,6 +20,10 @@ import argparse
 import weakref
 import threading
 import uuid
+import socket
+import struct
+import queue
+import json
 
 from motion_math import signed_longitudinal_acceleration
 
@@ -243,6 +247,138 @@ class CameraManager:
             print("[OK] Camera destroyed.")
 
 
+class VirtualCameraStreamer:
+    """
+    Captures forward-facing road video from a dedicated CARLA RGB sensor
+    and streams compressed JPEG frames over USB-C (via ADB reverse port forwarding)
+    to the ContextDrive phone app.
+    """
+    def __init__(self, ego_vehicle, world, run_id, port=8088, fps=15, quality=75, width=640, height=480):
+        self.ego_vehicle = ego_vehicle
+        self.world = world
+        self.run_id = run_id
+        self.port = port
+        self.fps = fps
+        self.quality = quality
+        self.width = width
+        self.height = height
+        self.active = True
+        self.sensor = None
+        self.seq_counter = 0
+        self.queue = queue.Queue(maxsize=1)
+        self.thread = None
+
+        self._setup_sensor()
+        self.thread = threading.Thread(target=self._worker, daemon=True)
+        self.thread.start()
+
+    def _setup_sensor(self):
+        try:
+            import cv2
+        except ImportError:
+            print("[ERROR] OpenCV (cv2) is required for virtual camera streaming: pip install opencv-python")
+            self.active = False
+            return
+
+        cam_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
+        cam_bp.set_attribute('image_size_x', str(self.width))
+        cam_bp.set_attribute('image_size_y', str(self.height))
+        cam_bp.set_attribute('fov', '90')
+        cam_bp.set_attribute('sensor_tick', str(1.0 / self.fps))
+
+        # Mount at hood/windshield forward view (ideal for on-device YOLO perception)
+        transform = carla.Transform(
+            carla.Location(x=1.6, y=0.0, z=1.3),
+            carla.Rotation(pitch=-2.0)
+        )
+        self.sensor = self.world.spawn_actor(
+            cam_bp,
+            transform,
+            attach_to=self.ego_vehicle,
+            attachment_type=carla.AttachmentType.Rigid
+        )
+        print(f"[OK] Virtual Camera Sensor attached (ID: {self.sensor.id}, {self.width}x{self.height} @ {self.fps} FPS, JPEG quality: {self.quality})")
+
+        weak_self = weakref.ref(self)
+        self.sensor.listen(lambda img: VirtualCameraStreamer._on_frame(weak_self, img))
+
+    @staticmethod
+    def _on_frame(weak_self, image):
+        self = weak_self()
+        if not self or not self.active:
+            return
+        try:
+            import cv2
+            raw = np.frombuffer(image.raw_data, dtype=np.uint8)
+            # CARLA gives BGRA; cv2.imencode expects BGR
+            bgr = np.reshape(raw, (image.height, image.width, 4))[:, :, :3]
+            _, encoded = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, self.quality])
+            jpeg_bytes = encoded.tobytes()
+
+            self.seq_counter += 1
+            item = (self.seq_counter, image.timestamp, image.frame, image.width, image.height, jpeg_bytes)
+
+            try:
+                self.queue.put_nowait(item)
+            except queue.Full:
+                try:
+                    self.queue.get_nowait()
+                except queue.Empty:
+                    pass
+                self.queue.put_nowait(item)
+        except Exception:
+            pass
+
+    def _worker(self):
+        while self.active:
+            sock = None
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2.0)
+                sock.connect(('127.0.0.1', self.port))
+                sock.settimeout(None)
+                print(f"[OK] Virtual Camera USB stream connected -> 127.0.0.1:{self.port}")
+                while self.active:
+                    try:
+                        seq, sim_time, sim_frame, width, height, jpeg_bytes = self.queue.get(timeout=0.2)
+                    except queue.Empty:
+                        continue
+
+                    meta = {
+                        "protocolVersion": 1,
+                        "scenarioRunId": self.run_id,
+                        "sequenceNumber": seq,
+                        "simulationTime": round(sim_time, 3),
+                        "simulationFrame": int(sim_frame),
+                        "width": width,
+                        "height": height,
+                        "format": "jpeg"
+                    }
+                    meta_bytes = json.dumps(meta).encode('utf-8')
+                    # Header: CDVF (4B) + Version(2B) + meta_len(4B) + img_len(4B) = 14B
+                    header = struct.pack('>4sHII', b'CDVF', 1, len(meta_bytes), len(jpeg_bytes))
+                    sock.sendall(header + meta_bytes + jpeg_bytes)
+            except (socket.error, ConnectionRefusedError, BrokenPipeError, TimeoutError, OSError):
+                time.sleep(1.0)
+            finally:
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+
+    def destroy(self):
+        self.active = False
+        if self.sensor is not None:
+            try:
+                self.sensor.stop()
+                self.sensor.destroy()
+            except Exception:
+                pass
+            self.sensor = None
+            print("[OK] Virtual Camera Sensor destroyed.")
+
+
 def update_spectator_to_vehicle(spectator, vehicle, distance=10.0, height=5.0):
     """Safely positions the CARLA server's Spectator camera behind the vehicle."""
     try:
@@ -295,6 +431,11 @@ def main():
     parser.add_argument('--rain', action='store_true', help='Apply heavy rain in simulator and telemetry')
     parser.add_argument('--night', action='store_true', help='Apply night lighting in simulator and telemetry')
     parser.add_argument('--visibility', default=None, help='Explicit visibility category, e.g. poor, adequate, clear (default: None)')
+    parser.add_argument('--stream-video', action='store_true', help='Stream CARLA virtual camera frames to ContextDrive phone over USB')
+    parser.add_argument('--video-port', type=int, default=8088, help='ContextDrive phone camera stream port (default: 8088)')
+    parser.add_argument('--video-fps', type=int, default=15, help='Target frame rate for virtual camera stream (default: 15)')
+    parser.add_argument('--video-quality', type=int, default=75, help='JPEG compression quality 1-100 (default: 75)')
+    parser.add_argument('--video-res', default='640x480', help='Virtual camera resolution (default: 640x480)')
     args = parser.parse_args()
 
     try:
@@ -364,15 +505,32 @@ def main():
         print("[STEP] Attaching camera...")
         camera_manager = CameraManager(ego_vehicle, world, width, height, VIEW_FOV)
 
+        # ── Shared Session Identity for Video & Telemetry ──
+        scenario_run_id = f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        if args.stream or args.stream_video:
+            print(f"[OK] Session Run ID: {scenario_run_id}")
+
+        # ── Virtual Camera USB Streamer ──
+        virtual_camera_streamer = None
+        if args.stream_video:
+            try:
+                v_w, v_h = [int(x) for x in args.video_res.lower().split('x')]
+            except Exception:
+                v_w, v_h = 640, 480
+            print(f"[STEP] Starting Virtual Camera USB streamer on port {args.video_port}...")
+            virtual_camera_streamer = VirtualCameraStreamer(
+                ego_vehicle, world, scenario_run_id,
+                port=args.video_port, fps=args.video_fps, quality=args.video_quality,
+                width=v_w, height=v_h
+            )
+
         # ── Live Telemetry Streamer Thread (Optional) ──
         stream_active = [args.stream]
         if args.stream:
             import requests
             telemetry_url = f"http://{args.phone}:{args.stream_port}/telemetry"
-            scenario_run_id = f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
             sequence_counter = [0]
             print(f"[OK] Live telemetry streamer active -> {telemetry_url}")
-            print(f"[OK] Session Run ID: {scenario_run_id}")
 
             def _stream_worker():
                 carla_map = world.get_map()
@@ -567,6 +725,8 @@ def main():
         print("\n[STEP] Cleaning up resources...")
         if args.stream:
             stream_active[0] = False
+        if virtual_camera_streamer:
+            virtual_camera_streamer.destroy()
         if camera_manager:
             camera_manager.destroy()
         if spawned_by_us:

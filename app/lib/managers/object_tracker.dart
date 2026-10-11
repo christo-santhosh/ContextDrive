@@ -78,4 +78,9 @@ class ObjectTracker {
     double iou = intersectionArea / (boxAArea + boxBArea - intersectionArea);
     return iou;
   }
+
+  void reset() {
+    _tracks.clear();
+    _nextTrackId = 1;
+  }
 }
