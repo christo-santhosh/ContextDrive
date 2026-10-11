@@ -1,0 +1,656 @@
+=== PAGE 38 ===
+Chapter 5
+Implementation
+The ContextDrive system has been implemented as an integrated advanced driver-assistance
+platform combining edge-based computer vision, GPS telemetry, environmental intelligence,
+and deterministic risk assessment. The implementation connects these diverse modules so that
+real-time driving data can be processed on-device and presented to the driver through a unified,
+smartphone-based interface.
+5.1
+Tools and Technologies
+Frontend Development
+The frontend of the system is developed using the Flutter framework with the Dart
+programming language. Flutter provides a highly responsive, cross-platform UI toolkit that
+enables the creation of a smooth, real-time camera dashboard. It handles the display of live
+video feeds, floating UI overlays for risk scores, and the presentation of transparent safety
+explanations.
+Edge AI and Computer Vision
+The core perception capabilities are powered by Google LiteRT (formerly TensorFlow Lite),
+which allows the YOLOv8 Nano model to execute efficiently directly on the smartphone
+hardware. This edge-AI approach ensures that video frames are processed locally in real-time,
+eliminating network latency and preserving driver privacy since video data never leaves the
+device.
+Telemetry and Location Services
+The system utilizes native smartphone GPS sensors accessed via Flutter location and geolocator
+packages. This provides the continuous stream of speed, heading, and coordinate data necessary
+for the risk engine to accurately monitor driving dynamics.
+Environmental Data Services
+28
+
+
+
+----------------------------------------
+=== PAGE 39 ===
+CHAPTER 5. IMPLEMENTATION
+29
+The OpenWeatherMap API is used as the external cloud service for retrieving hyper-local
+weather data. Standard HTTP request libraries in Dart handle the API communication, fetching
+relevant environmental context based on the current GPS coordinates to enhance the system’s
+situational awareness.
+Table 5.1 summarizes how the tools are used in the different modules of the system.
+Table 5.1: Technologies Used in the ContextDrive Modules
+Module
+Technology
+Vision and object detection
+YOLOv8 Nano model executed with Google
+LiteRT (formerly TensorFlow Lite) on the device.
+Telemetry and GPS
+Smartphone GPS accessed through the Flutter
+location and geolocator packages.
+Environmental context
+OpenWeatherMap API called with Dart HTTP
+libraries using the current GPS coordinates.
+Risk
+engine
+and
+explainability
+Deterministic rule-based engine implemented in
+Dart.
+User interface
+Flutter dashboard with live camera feed, bounding
+boxes, and risk overlays.
+Simulation testing
+CARLA
+simulator
+streaming
+virtual
+camera
+frames and telemetry to the phone over USB using
+ADB port forwarding.
+5.2
+Modules
+Data Acquisition and Pre-processing Module
+The data acquisition module collects the dynamic driving parameters required by the system.
+The implemented setup uses the smartphone’s built-in sensors to obtain real-time video frames
+from the rear camera and speed, location, and bearing data from the GPS receiver. Weather
+information is obtained through an external weather service to provide environmental context
+such as visibility and precipitation. The collected values are validated and synchronized
+before being passed to the processing modules, ensuring that the input data is robust for risk
+evaluation.
+Vision and Object Detection Module
+The vision module is responsible for identifying potential hazards on the road ahead. The
+implemented model uses a lightweight YOLOv8 Nano architecture optimized for mobile
+devices. It processes the live camera frames to detect vehicles and obstacles, generating
+
+
+
+----------------------------------------
+=== PAGE 40 ===
+CHAPTER 5. IMPLEMENTATION
+30
+bounding boxes and estimating proximity. The continuous object detection results are used
+by the risk assessment module to determine safe following distances and potential collision
+risks.
+Environmental Context Module
+The environmental context module provides critical situational awareness based on the
+vehicle’s current location. The system queries the OpenWeatherMap API to retrieve real-time
+weather conditions. By considering factors like fog, heavy rain, or low visibility, this module
+provides contextual weights that dynamically adjust the sensitivity of the risk assessment
+algorithms, converting raw weather data into actionable driving intelligence.
+Risk Assessment Module
+The risk assessment module evaluates the integrated driving data to compute a continuous
+driving risk score. The system employs a deterministic, rule-based engine that compares vehicle
+speed, object proximity, and weather conditions against predefined safety thresholds. Instead of
+merely logging data, the module classifies the current driving situation into distinct risk levels
+(e.g., Safe, Warning, Critical) to facilitate immediate driver response.
+Transparent Explainability Module
+To make the automated risk assessments easier to understand and trust, an explainability
+module generates explicit reasoning for its decisions. Whenever a warning or critical alert
+is triggered, the system analyzes the contributing factors (e.g., “High speed in low visibility”
+or “Following too closely”). This approach ensures that the driver understands exactly why
+an alert was issued, reducing cognitive overload and improving the interpretability of the
+assistance system.
+User Interface and Dashboard Module
+The user interface module provides a seamless and intuitive dashboard for the driver. The
+mobile application overlays the live camera feed with real-time bounding boxes, the current
+risk score, safety alerts, and transparent recommendations. It is designed to deliver critical
+information efficiently without distracting the driver from the road.
+5.3
+Algorithms
+5.3.1
+Methods and Techniques
+The ContextDrive system integrates various methods and techniques to support drivers
+in making informed, safe decisions. The system combines computer vision-based object
+detection, GPS telemetry tracking, weather data analysis, deterministic risk assessment,
+and transparent explainability mechanisms. These techniques work together to provide
+
+
+
+----------------------------------------
+=== PAGE 41 ===
+CHAPTER 5. IMPLEMENTATION
+31
+personalized and data-driven safety recommendations.
+Computer Vision-Based Object Detection
+The system uses the YOLOv8 Nano model via Google LiteRT to detect vehicles and obstacles
+in the live camera feed. This lightweight model processes camera frames efficiently on-device,
+providing bounding boxes and proximity estimations for critical road elements.
+GPS Telemetry Tracking
+The system collects real-time speed, location, and bearing data from the smartphone’s built-in
+GPS receiver. This telemetry data is used to continuously monitor the vehicle’s dynamic state
+and movement patterns.
+Weather Data Analysis
+Weather and visibility information is obtained using the OpenWeatherMap API based on
+current GPS coordinates. Parameters such as visibility distance, precipitation, and extreme
+weather alerts are incorporated to adjust the risk sensitivity of the system.
+Deterministic Risk Assessment
+The system employs a rule-based deterministic risk engine to calculate a continuous driving
+risk score. It evaluates multiple factors, including vehicle speed, proximity to detected objects,
+and adverse weather conditions, to classify the driving situation into distinct risk levels.
+Transparent Explainability
+To build trust and prevent cognitive overload, the system generates clear, explicit explanations
+alongside its warnings. This ensures the driver understands exactly which environmental or
+behavioral factors contributed to the current safety alert.
+Real-Time Driver Interface
+The application provides a responsive Flutter-based dashboard that overlays the risk score,
+safety alerts, and actionable recommendations directly onto the live camera feed, ensuring
+seamless integration into the driving experience.
+5.3.2
+Temporal Object Tracking and Approach Detection
+Detections from consecutive frames are associated into tracks, and the growth of the
+bounding-box area over time is used as a cue that a vehicle is approaching. A track must be
+observed repeatedly before it can indicate closing movement, so that an isolated noisy detection
+does not trigger a warning. A developing approach can be flagged before the configured
+near-proximity threshold is reached. Algorithm 1 gives the procedure.
+
+
+
+----------------------------------------
+=== PAGE 42 ===
+CHAPTER 5. IMPLEMENTATION
+32
+Algorithm 1 Temporal tracking and approach detection
+Require: Detections Dt at timestamp t, active tracks T, matching threshold τ,
+minimum observations Nmin, growth threshold gth, near threshold Anear
+Ensure: Updated tracks with proximity and closing status
+1: for all detection d ∈Dt do
+2:
+match d to the track in T with highest overlap
+3:
+if overlap ≥τ then
+4:
+append (area of d, t) to the history of that track
+5:
+else
+6:
+create a new track from d
+7:
+end if
+8: end for
+9: for all track k ∈T do
+10:
+if k not seen for the allowed time then
+11:
+remove k
+12:
+continue
+13:
+end if
+14:
+if observations of k < Nmin then
+15:
+mark k as not closing; continue
+16:
+end if
+17:
+g ←rate of change of the area of k over the recent window
+18:
+k.closing ←(g > gth)
+19:
+if area of k ≥Anear then
+20:
+k.proximity ←NEAR
+21:
+else if k.closing then
+22:
+k.proximity ←DEVELOPING APPROACH
+23:
+else
+24:
+k.proximity ←FAR
+25:
+end if
+26: end for
+5.3.3
+Context-Aware Risk Assessment
+The risk engine is a deterministic, rule-based procedure. It combines the speed from the GPS,
+the proximity and closing status of the tracked vehicles, the weather, and the time of day.
+Adverse weather and night driving increase the sensitivity of the rules. When the required
+hazards occur together, such as a near or closing vehicle combined with high speed or adverse
+conditions, the situation is classified as critical. If an input is unavailable or stale, the engine
+records a data limitation instead of assuming favourable conditions. Algorithm 2 gives the
+procedure.
+
+
+
+----------------------------------------
+=== PAGE 43 ===
+CHAPTER 5. IMPLEMENTATION
+33
+Algorithm 2 Context-aware risk assessment
+Require: Driving context C = (speed v, tracks T, weather w, time of day, data quality)
+Ensure: Risk result (score, level, factors, Why, Advice)
+1: F ←/0
+2: if any input of C is missing or stale then
+3:
+add DATA LIMITATION to F
+▷never treated as favourable
+4: end if
+5: k ←sensitivity factor from w and time of day
+▷rain, low visibility, night
+6: if v > speed threshold scaled by k then
+7:
+add SPEEDING to F
+8: end if
+9: if deceleration > hard-braking threshold then
+10:
+add HARD BRAKING to F
+11: end if
+12: if acceleration > rapid-acceleration threshold then
+13:
+add RAPID ACCELERATION to F
+14: end if
+15: if a track in T has proximity NEAR then
+16:
+add NEAR VEHICLE to F
+17: end if
+18: if a track in T is closing then
+19:
+add CLOSING VEHICLE to F
+20: end if
+21: if w is adverse then
+22:
+add ADVERSE WEATHER to F
+23: end if
+24: score ←sum of the weights of the factors in F
+25: if required compound-hazard conditions hold then
+26:
+level ←CRITICAL
+27: else if score ≥warning threshold then
+28:
+level ←WARNING (CAUTION)
+29: else
+30:
+level ←SAFE (MONITORING)
+31: end if
+32: Why ←short description of the most significant factors in F
+33: Advice ←recommended action for level and factors
+34: return (score, level, F, Why, Advice)
+5.3.4
+Alert Confirmation and Voice Prioritisation
+To avoid false alarms and repeated announcements, each event type has its own confirmation
+delay, and voice alerts are rate-limited. A higher-severity event is allowed to interrupt the rate
+limit. Algorithm 3 gives the procedure.
+
+
+
+----------------------------------------
+=== PAGE 44 ===
+CHAPTER 5. IMPLEMENTATION
+34
+Algorithm 3 Alert confirmation and voice prioritisation
+Require: Risk result r with event type e and level s; confirmation delay de; cooldown
+c
+Ensure: Decision to display and announce the alert
+1: display the risk card for r
+2: if s is SAFE then
+3:
+return
+4: end if
+5: if event e has not persisted for at least de then
+6:
+return
+7: end if
+8: if s > severity of the last announcement then
+9:
+announce r by voice
+▷escalation is always allowed
+10: else if time since the last announcement of e ≥c then
+11:
+announce r by voice
+12: else
+13:
+suppress the voice alert
+▷duplicate announcement
+14: end if
+5.4
+Key Code Snippets
+The listings below show representative code for two of the modules: reading speed and bearing
+from the GPS, and retrieving the weather from the OpenWeatherMap API. They illustrate
+how the Flutter location packages and the Dart HTTP libraries are used for the telemetry and
+environmental context modules.
+1
+final stream = Geolocator.getPositionStream(
+2
+locationSettings: const LocationSettings(
+3
+accuracy: LocationAccuracy.best,
+4
+distanceFilter: 0,
+5
+),
+6
+);
+7
+8
+stream.listen((Position p) {
+9
+final speedKmh = p.speed * 3.6;
+// m/s to km/h
+10
+final bearing = p.heading;
+11
+telemetry.update(speedKmh, bearing, p.latitude, p.longitude);
+12
+});
+Listing 5.1: Subscribing to speed and bearing updates using the geolocator package
+
+
+
+----------------------------------------
+=== PAGE 45 ===
+CHAPTER 5. IMPLEMENTATION
+35
+1
+Future<WeatherInfo?> fetchWeather(double lat, double lon) async {
+2
+final uri = Uri.https(’api.openweathermap.org’, ’/data/2.5/weather’, {
+3
+’lat’: ’$lat’, ’lon’: ’$lon’, ’units’: ’metric’, ’appid’: apiKey,
+4
+});
+5
+try {
+6
+final res = await http.get(uri).timeout(const Duration(seconds: 5));
+7
+if (res.statusCode != 200) return null;
+// treated as unavailable data
+8
+return WeatherInfo.fromJson(jsonDecode(res.body));
+9
+} catch (_) {
+10
+return null;
+// never assume clear weather
+11
+}
+12
+}
+Listing 5.2: Fetching the current weather for the GPS coordinates
+
+
+
+----------------------------------------
+=== PAGE 46 ===
+Chapter 6
+Testing
+6.1
+Test Strategy
+A multi-level testing strategy was used to evaluate the functionality and reliability of
+ContextDrive. The application integrates on-device YOLO vehicle detection, temporal object
+tracking, GPS filtering, environmental context, CARLA simulation, and a deterministic risk
+assessment engine.
+The use of the CARLA simulator for validating driving functions follows approaches
+reported in recent work on simulation-based validation [6, 7]. The testing strategy comprises
+the following levels:
+• Unit Testing: Validates individual components, including camera-frame protocol
+parsing, telemetry processing, bounding-box tracking, GPS filtering, risk classification,
+and alert confirmation policies.
+• Integration Testing: Verifies communication between the CARLA simulator, the
+Flutter application, the virtual camera stream, and the telemetry service.
+• System Testing: Examines application behaviour using simulated driving inputs,
+including vehicle approach, motion events, and changing environmental conditions.
+• Interface Testing: Verifies the display of camera frames, vehicle detections, telemetry
+values, contextual indicators, and risk assessments on the mobile application.
+6.2
+Test Cases
+The following test cases cover the principal functional modules of ContextDrive.
+1. TC-01 (Camera Stream Protocol): Process packets containing camera-frame metadata
+and image data.
+36
+
+
+
+----------------------------------------
+=== PAGE 47 ===
+CHAPTER 6. TESTING
+37
+Expected Result: Valid frames are decoded, fragmented packets are handled correctly,
+and duplicate or out-of-order frames are rejected.
+Status: Pass.
+2. TC-02 (Telemetry Processing and Mode Isolation): Process CARLA telemetry
+containing vehicle speed, scenario information, and simulation timestamps while
+physical GPS updates are present.
+Expected Result: Valid telemetry is parsed correctly, and CARLA mode uses simulator
+inputs without interference from physical GPS updates.
+Status: Pass.
+3. TC-03 (GPS Filtering): Evaluate stationary GPS drift and sudden speed outliers.
+Expected Result: Stationary noise and transient outliers are filtered according to the
+implemented rules.
+Status: Pass.
+4. TC-04 (Temporal Object Tracking and Early Approach Detection): Track vehicles
+across consecutive frames with gradual or rapid bounding-box expansion, including
+timestamped sequences representing an approaching vehicle.
+Expected Result: Vehicle tracks are maintained during plausible approaches, isolated
+noisy detections do not automatically indicate closing movement, and a developing
+approach can be classified before the configured near-proximity threshold is reached.
+Status: Pass.
+5. TC-05 (Risk Classification and Compound Hazard Assessment): Evaluate hard
+braking, rapid acceleration, vehicle proximity, speeding, and adverse environmental
+conditions using controlled inputs.
+Expected Result: The risk engine applies the configured rules, selects the appropriate
+severity and explanation, and assigns CRITICAL severity when the required
+compound-hazard conditions are satisfied.
+Status: Pass.
+6. TC-06 (Alert Confirmation and Voice Prioritisation): Evaluate event-specific
+confirmation policies and repeated voice alerts followed by a higher-severity event.
+Expected Result: Configured confirmation delays are applied, duplicate announcements
+are rate-limited, and higher-severity escalation is permitted.
+Status: Pass.
+
+
+
+----------------------------------------
+=== PAGE 48 ===
+CHAPTER 6. TESTING
+38
+7. TC-07 (Data Quality and Stale Input Handling): Evaluate unavailable environmental
+inputs and stale telemetry or visual data.
+Expected Result: The application represents data limitations appropriately and does not
+automatically treat missing inputs as favourable conditions.
+Status: Pass.
+8. TC-08 (Mobile Interface): Examine risk cards, contextual indicators, and portrait and
+landscape layouts.
+Expected Result: The interface displays the relevant information without layout overflow
+in the tested cases.
+Status: Pass.
+9. TC-09 (CARLA Camera and Telemetry Integration): Stream virtual-camera frames
+from CARLA to the Nothing Phone (2a) over USB and receive changing vehicle speed
+and environmental context.
+Expected Result: The application displays the incoming camera feed, YOLO vehicle
+bounding boxes, and updated telemetry values.
+Status: Pass.
+6.3
+Results of Unit, Integration, and System Testing
+6.3.1
+Unit Testing Outcomes
+The Flutter test suite was executed, and the recorded execution output reported that 42 tests
+passed with zero reported failures.
+The tests covered camera-stream handling, telemetry parsing, GPS filtering, object
+tracking, risk classification, voice-alert prioritisation, and user-interface behaviour.
+The object-tracking tests included developing vehicle approaches, rapid bounding-box
+expansion, stationary objects, receding vehicles, and noisy detections. The risk-engine tests
+also covered distinct braking and acceleration classifications, compound hazard conditions,
+environmental advisories, and data-quality handling.
+6.3.2
+Integration Testing Outcomes
+Integration testing was carried out using the CARLA simulator and the Nothing Phone (2a).
+The following functionality was observed:
+
+
+
+----------------------------------------
+=== PAGE 49 ===
+CHAPTER 6. TESTING
+39
+• The mobile device was recognised through Android Debug Bridge (ADB).
+• CARLA virtual-camera frames were transmitted over USB using ADB port forwarding
+on port 8088.
+• The ContextDrive application displayed the incoming camera feed and YOLO vehicle
+bounding boxes.
+• CARLA vehicle speed was received and updated on the mobile application through the
+existing telemetry connection.
+• Environmental context from the CARLA scenario was reflected in the application.
+These observations demonstrate the basic integration of the CARLA simulation, video
+transport, mobile perception pipeline, and telemetry interface.
+6.3.3
+System Testing Outcomes
+ContextDrive was exercised with the CARLA manual driving rig to verify the integrated
+camera and telemetry workflow.
+During operation, the simulated vehicle could be driven while camera frames were
+streamed to the mobile application. YOLO detections were displayed as bounding boxes, and
+the application received changing vehicle speed and environmental context.
+The automated risk-engine tests additionally verified the configured responses to
+approaching vehicles, distinct motion events, and combinations of visual and environmental
+conditions. These results establish functional verification of the tested software rules and basic
+operation of the integrated mobile pipeline.
+
+
+
+----------------------------------------
+=== PAGE 50 ===
+Chapter 7
+Results and Discussion
+This chapter presents the results obtained with ContextDrive. It shows the application interface,
+analyzes the performance observed during testing, compares the system with the existing work
+reviewed in Chapter 2, and discusses how well the objectives were met.
+7.1
+Screenshots
+Figure 7.1 and Figure 7.3 show the ContextDrive dashboard in two driving situations. In both
+screens the left panel displays the weather and day or night indicators, the voice alert toggle,
+the current speed, the number of detected vehicles, the risk focus, and the GPS status. The right
+panel shows the live camera feed with bounding boxes around the detected vehicles and the
+risk card.
+In Figure 7.1 the system is in the low-risk MONITORING state. The risk card is green
+and explains that normal driving conditions are present, and the advice is to continue driving
+safely. In Figure 7.3 a vehicle is near and the system raises a CAUTION alert. The amber
+risk card states why the alert was issued, shows the observed condition and the supporting
+evidence from the camera view, and gives the advice to check the road ahead and to increase
+the following distance if needed.
+40
+
+
+
+----------------------------------------
+=== PAGE 51 ===
+CHAPTER 7. RESULTS AND DISCUSSION
+41
+Figure 7.1: ContextDrive - Low risk event
+Figure 7.2: ContextDrive - High risk event
+Figure 7.3: ContextDrive - High risk event
+7.2
+Performance Analysis
+The performance of ContextDrive was evaluated through the multi-level testing described in
+Chapter 6. Table 7.1 summarizes the evidence for each aspect of the system.
+
+
+
+----------------------------------------
+=== PAGE 52 ===
+CHAPTER 7. RESULTS AND DISCUSSION
+42
+Table 7.1: Summary of the Evaluation Results
+Aspect
+Evidence
+Outcome
+Automated tests
+Flutter
+test
+suite
+covering
+camera-stream
+handling,
+telemetry
+parsing,
+GPS
+filtering,
+object
+tracking, risk classification, voice-alert
+prioritisation, and the user interface.
+42 passed, 0
+failed
+Functional test cases
+Test cases TC-01 to TC-09 covering
+the camera protocol, telemetry, GPS
+filtering, tracking, risk rules, alerts,
+data quality, interface, and CARLA
+integration.
+All passed
+Object tracking
+Developing
+approaches,
+rapid
+bounding-box
+expansion,
+stationary
+objects, receding vehicles, and noisy
+detections.
+Behaved
+as
+configured
+Risk engine
+Braking
+and
+acceleration
+events,
+compound
+hazards,
+environmental
+advisories, and data-quality handling.
+Behaved
+as
+configured
+Integration
+CARLA virtual-camera frames sent to
+a Nothing Phone (2a) over USB using
+ADB port forwarding, with live speed
+and environmental context.
+Camera feed,
+detections,
+and telemetry
+displayed
+Interface
+Risk cards, contextual indicators, and
+portrait and landscape layouts.
+No
+layout
+overflow
+in
+tested cases
+The results show that the tracking rules distinguish a developing approach from
+isolated noisy detections, that the risk engine escalates to CRITICAL only when the required
+compound-hazard conditions are met, and that missing or stale inputs are reported as data
+limitations. The voice alert policy rate-limits duplicate announcements while still allowing a
+higher-severity event to be announced. In the CARLA integration test, the application received
+the virtual camera stream and the changing vehicle speed and environmental context, and
+displayed the YOLO detections as bounding boxes while the simulated vehicle was driven
+with the manual driving rig.
+These results establish the functional verification of the tested software rules and the
+basic operation of the integrated mobile pipeline. Measurements such as frame rate, inference
+latency, battery use, and thermal behaviour on the device, and trials on real roads, are not part
+of the present evaluation and are listed as future enhancements.
+
+
+
+----------------------------------------
