@@ -7,7 +7,6 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../models/detected_object.dart';
 import '../models/app_state.dart';
 import '../models/context_vector.dart';
-import '../models/tracked_object.dart';
 import '../managers/risk_manager.dart';
 import '../services/carla_demo_service.dart';
 import '../services/carla_camera_stream_service.dart';
@@ -35,9 +34,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<DetectedObject> _carlaDetections = [];
   int? _lastProcessedSequence;
   int? _carlaDetectionSequence;
-  int _carlaInferenceMs = 0;
-  int _carlaFrameAgeMs = 0;
-  int _carlaInferenceSkippedFrames = 0;
   CarlaCameraStreamService? _streamService;
 
   @override
@@ -245,18 +241,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (frame.sequenceNumber == _lastProcessedSequence) return;
     if (_isProcessingCarlaFrame) return;
 
-    final previousSequence = _lastProcessedSequence;
-    if (previousSequence != null && frame.sequenceNumber > previousSequence + 1) {
-      // This is intentional latest-frame coalescing, not a transport loss.
-      _carlaInferenceSkippedFrames += frame.sequenceNumber - previousSequence - 1;
-    }
     _lastProcessedSequence = frame.sequenceNumber;
     _isProcessingCarlaFrame = true;
     _runCarlaYoloInference(frame);
   }
 
   Future<void> _runCarlaYoloInference(CarlaVideoFrame frame) async {
-    final stopwatch = Stopwatch()..start();
     try {
       if (_carlaYolo == null || !_isCarlaYoloInitialized) {
         _carlaYolo = YOLO(modelPath: 'yolo26n', task: YOLOTask.detect);
@@ -288,7 +278,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
         }
       }
-      stopwatch.stop();
       final frameAge = DateTime.now().difference(frame.receivedAt);
       if (mounted &&
           _perceptionSource == PerceptionSource.carlaVirtualCamera &&
@@ -309,8 +298,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ? mapped
               : [];
           _carlaDetectionSequence = frame.sequenceNumber;
-          _carlaInferenceMs = stopwatch.elapsedMilliseconds;
-          _carlaFrameAgeMs = frameAge.inMilliseconds;
         });
       }
     } catch (e) {
@@ -342,7 +329,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _carlaDetections = [];
       _carlaDetectionSequence = null;
       _lastProcessedSequence = null;
-      _carlaInferenceSkippedFrames = 0;
     });
     // Pause physical camera on Android
     try {
@@ -377,7 +363,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _carlaDetections = [];
       _carlaDetectionSequence = null;
       _lastProcessedSequence = null;
-      _carlaInferenceSkippedFrames = 0;
       _isProcessingCarlaFrame = false;
     });
     // Clear tracking history
@@ -558,103 +543,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
 
-        return Stack(
-          children: [
-            content,
-            // Diagnostic HUD pill at top-right
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 315),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.75),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: status == CarlaStreamStatus.connected
-                        ? Colors.greenAccent
-                        : status == CarlaStreamStatus.stale
-                            ? Colors.amberAccent
-                            : Colors.white30,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: status == CarlaStreamStatus.connected
-                            ? Colors.greenAccent
-                            : status == CarlaStreamStatus.stale
-                                ? Colors.amberAccent
-                                : Colors.redAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'CARLA USB: ${streamService.currentFps.toStringAsFixed(1)} FPS · ${_carlaInferenceMs}ms infer · ${_carlaFrameAgeMs}ms age · $_carlaInferenceSkippedFrames coalesced',
-                        maxLines: 2,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Compact, optional CARLA diagnostics. These describe image-space
-            // evidence only; no physical distance or TTC is claimed here.
-            Positioned(
-              left: 10,
-              bottom: 10,
-              child: Consumer<RiskManager>(
-                builder: (context, riskManager, _) {
-                  final vector = riskManager.contextVector;
-                  final activeTrack = riskManager.currentTracks
-                      .where((track) => track.type == RoadObjectType.roadVehicle)
-                      .fold<TrackedObject?>(null, (closest, track) {
-                    if (closest == null || track.area > closest.area) return track;
-                    return closest;
-                  });
-                  final pending = riskManager.pendingReason;
-                  final remaining = riskManager.pendingConfirmationRemaining;
-                  final trend = activeTrack == null
-                      ? 'No tracked vehicle'
-                      : 'area ${activeTrack.area.toStringAsFixed(3)} · ${activeTrack.proximity.name} · '
-                          '${activeTrack.closingRate.name} · '
-                          '${activeTrack.growthPerSecond?.toStringAsFixed(2) ?? '–'}/s · '
-                          '${activeTrack.areaHistory.length} samples';
-                  final source = riskManager.lastVisualSourceFrame == null
-                      ? 'frame –'
-                      : 'frame ${riskManager.lastVisualSourceFrame} · t ${riskManager.lastVisualSimulationTime?.toStringAsFixed(2) ?? '–'}s';
-                  final candidate = !riskManager.isPendingConfirmation || pending == null
-                      ? 'Accepted: ${riskManager.currentAssessment.primaryReason}'
-                      : 'Candidate: $pending (${remaining?.inMilliseconds ?? 0}ms)';
-                  return Container(
-                    constraints: const BoxConstraints(maxWidth: 330),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.75),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Track: $trend\n$candidate\n$source · engine ${riskManager.lastRiskEvaluationDurationMs}ms · HUD: ${riskManager.currentAssessment.level.name} · ${vector.visualDataFresh ? 'fresh' : 'stale'}',
-                      style: const TextStyle(color: Colors.white, fontSize: 9.5, height: 1.25),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
+        return content;
       },
     );
   }
