@@ -48,6 +48,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       try {
         _streamService = context.read<CarlaCameraStreamService>();
         _streamService?.addListener(_onCarlaStreamFrame);
+        if (_streamService != null && !_streamService!.isRunning) {
+          _streamService!.start();
+        }
       } catch (_) {
         // Stream service optional in test harness
       }
@@ -500,7 +503,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         Icon(Icons.warning_amber, size: 14, color: Colors.white),
                         SizedBox(width: 4),
                         Text(
-                          'CARLA CAMERA DATA STALE (>1s)',
+                          'CARLA CAMERA DATA STALE (>2s)',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 11,
@@ -544,7 +547,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Listening on 127.0.0.1:${streamService.port}\nadb reverse tcp:${streamService.port} tcp:${streamService.port}',
+                      'Listening on port ${streamService.port}\nadb forward tcp:${streamService.port} tcp:${streamService.port}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white60,

@@ -27,14 +27,35 @@ def create_synthetic_frame(width=640, height=480, frame_num=1):
     _, encoded = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 75])
     return encoded.tobytes()
 
+def ensure_adb_forward(port=8088):
+    import shutil
+    import subprocess
+    import os
+    adb_path = shutil.which("adb")
+    if not adb_path:
+        for candidate in [
+            r"C:\Users\chris\AppData\Local\Android\Sdk\platform-tools\adb.exe",
+            os.path.expanduser(r"~\AppData\Local\Android\Sdk\platform-tools\adb.exe"),
+        ]:
+            if os.path.isfile(candidate):
+                adb_path = candidate
+                break
+    if adb_path:
+        try:
+            subprocess.run([adb_path, "forward", f"tcp:{port}", f"tcp:{port}"],
+                           capture_output=True, timeout=3.0)
+        except Exception:
+            pass
+
 def send_test_stream(port=8088, num_frames=10, fps=15):
+    ensure_adb_forward(port)
     print(f"[TEST] Connecting to 127.0.0.1:{port}...")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.connect(('127.0.0.1', port))
     except Exception as e:
         print(f"[ERROR] Could not connect to 127.0.0.1:{port}: {e}")
-        print("Ensure 'adb reverse tcp:8088 tcp:8088' is run and app stream server is active.")
+        print("Ensure 'adb forward tcp:8088 tcp:8088' is run and app stream server is active.")
         return False
 
     print(f"[OK] Connected! Streaming {num_frames} frames at ~{fps} FPS...")

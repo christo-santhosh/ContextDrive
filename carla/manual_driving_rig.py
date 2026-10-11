@@ -247,16 +247,50 @@ class CameraManager:
             print("[OK] Camera destroyed.")
 
 
+def ensure_adb_forward(port=8088):
+    """
+    Ensures ADB forward tcp:<port> tcp:<port> is active for USB video streaming.
+    PC Host connects to 127.0.0.1:<port>, which ADB forwards to Android Phone:<port>.
+    """
+    import shutil
+    import subprocess
+    adb_path = shutil.which("adb")
+    if not adb_path:
+        for candidate in [
+            r"C:\Users\chris\AppData\Local\Android\Sdk\platform-tools\adb.exe",
+            os.path.expanduser(r"~\AppData\Local\Android\Sdk\platform-tools\adb.exe"),
+        ]:
+            if os.path.isfile(candidate):
+                adb_path = candidate
+                break
+    if adb_path:
+        try:
+            res = subprocess.run(
+                [adb_path, "forward", f"tcp:{port}", f"tcp:{port}"],
+                capture_output=True, text=True, timeout=3.0
+            )
+            if res.returncode == 0:
+                print(f"[ADB] Forward confirmed: host:{port} -> device:{port}")
+                return True
+            else:
+                err = res.stderr.strip() if res.stderr else res.stdout.strip()
+                print(f"[ADB NOTICE] 'adb forward tcp:{port} tcp:{port}' returned: {err}")
+        except Exception as e:
+            print(f"[ADB NOTICE] Could not execute adb: {e}")
+    return False
+
+
 class VirtualCameraStreamer:
     """
     Captures forward-facing road video from a dedicated CARLA RGB sensor
-    and streams compressed JPEG frames over USB-C (via ADB reverse port forwarding)
+    and streams compressed JPEG frames over USB-C (via ADB port forwarding)
     to the ContextDrive phone app.
     """
-    def __init__(self, ego_vehicle, world, run_id, port=8088, fps=15, quality=75, width=640, height=480):
+    def __init__(self, ego_vehicle, world, run_id, host='127.0.0.1', port=8088, fps=15, quality=75, width=640, height=480):
         self.ego_vehicle = ego_vehicle
         self.world = world
         self.run_id = run_id
+        self.host = host
         self.port = port
         self.fps = fps
         self.quality = quality
@@ -265,8 +299,11 @@ class VirtualCameraStreamer:
         self.active = True
         self.sensor = None
         self.seq_counter = 0
-        self.queue = queue.Queue(maxsize=1)
+        self.queue = queue.Queue(maxsize=5)
         self.thread = None
+
+        if self.host in ('127.0.0.1', 'localhost'):
+            ensure_adb_forward(self.port)
 
         self._setup_sensor()
         self.thread = threading.Thread(target=self._worker, daemon=True)
@@ -330,14 +367,21 @@ class VirtualCameraStreamer:
             pass
 
     def _worker(self):
+        last_forward_check = 0.0
         while self.active:
             sock = None
             try:
+                if self.host in ('127.0.0.1', 'localhost'):
+                    now = time.time()
+                    if now - last_forward_check > 5.0:
+                        ensure_adb_forward(self.port)
+                        last_forward_check = now
+
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(2.0)
-                sock.connect(('127.0.0.1', self.port))
+                sock.connect((self.host, self.port))
                 sock.settimeout(None)
-                print(f"[OK] Virtual Camera USB stream connected -> 127.0.0.1:{self.port}")
+                print(f"[OK] Virtual Camera USB stream connected -> {self.host}:{self.port}")
                 while self.active:
                     try:
                         seq, sim_time, sim_frame, width, height, jpeg_bytes = self.queue.get(timeout=0.2)
@@ -432,6 +476,7 @@ def main():
     parser.add_argument('--night', action='store_true', help='Apply night lighting in simulator and telemetry')
     parser.add_argument('--visibility', default=None, help='Explicit visibility category, e.g. poor, adequate, clear (default: None)')
     parser.add_argument('--stream-video', action='store_true', help='Stream CARLA virtual camera frames to ContextDrive phone over USB')
+    parser.add_argument('--video-host', default=None, help='Target host IP for video stream (default: 127.0.0.1 via ADB forward)')
     parser.add_argument('--video-port', type=int, default=8088, help='ContextDrive phone camera stream port (default: 8088)')
     parser.add_argument('--video-fps', type=int, default=15, help='Target frame rate for virtual camera stream (default: 15)')
     parser.add_argument('--video-quality', type=int, default=75, help='JPEG compression quality 1-100 (default: 75)')
@@ -517,9 +562,11 @@ def main():
                 v_w, v_h = [int(x) for x in args.video_res.lower().split('x')]
             except Exception:
                 v_w, v_h = 640, 480
-            print(f"[STEP] Starting Virtual Camera USB streamer on port {args.video_port}...")
+            v_host = args.video_host if args.video_host else '127.0.0.1'
+            print(f"[STEP] Starting Virtual Camera streamer -> {v_host}:{args.video_port}...")
             virtual_camera_streamer = VirtualCameraStreamer(
                 ego_vehicle, world, scenario_run_id,
+                host=v_host,
                 port=args.video_port, fps=args.video_fps, quality=args.video_quality,
                 width=v_w, height=v_h
             )

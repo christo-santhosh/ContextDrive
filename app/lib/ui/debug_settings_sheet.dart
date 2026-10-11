@@ -516,7 +516,7 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
                         const SizedBox(height: 6),
                         const Text(
                           'Forward USB port with ADB:\n'
-                          'adb reverse tcp:8088 tcp:8088',
+                          'adb forward tcp:8088 tcp:8088',
                           style: TextStyle(
                             color: Colors.white38,
                             fontSize: 11,
