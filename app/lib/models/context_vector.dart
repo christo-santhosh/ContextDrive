@@ -31,6 +31,13 @@ class ContextVector {
   /// Visual proxy derived from a tracked bounding-box area, not metres.
   final double closestVehicleDistance;
   final bool isClosingIn;
+  /// A short-horizon image-space trend: a tracked box is consistently growing
+  /// while still outside the existing near/very-near categories. This is not
+  /// a distance, TTC, or collision-probability estimate.
+  final bool isVisualApproachDeveloping;
+  final double? closestVehicleArea;
+  final double? visualGrowthPerSecond;
+  final bool visualDataFresh;
   final MotionClassification motion;
   /// Signed longitudinal acceleration in m/s² where available. Positive is
   /// acceleration in the direction of travel; negative is deceleration.
@@ -50,6 +57,10 @@ class ContextVector {
     required this.nearbyVehicles,
     required this.closestVehicleDistance,
     required this.isClosingIn,
+    this.isVisualApproachDeveloping = false,
+    this.closestVehicleArea,
+    this.visualGrowthPerSecond,
+    this.visualDataFresh = true,
     required this.motion,
     this.longitudinalAcceleration,
     this.telemetryFresh = true,

@@ -7,6 +7,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../models/detected_object.dart';
 import '../models/app_state.dart';
 import '../models/context_vector.dart';
+import '../models/tracked_object.dart';
 import '../managers/risk_manager.dart';
 import '../services/carla_demo_service.dart';
 import '../services/carla_camera_stream_service.dart';
@@ -33,6 +34,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isProcessingCarlaFrame = false;
   List<DetectedObject> _carlaDetections = [];
   int? _lastProcessedSequence;
+  int? _carlaDetectionSequence;
+  int _carlaInferenceMs = 0;
+  int _carlaFrameAgeMs = 0;
+  int _carlaInferenceSkippedFrames = 0;
   CarlaCameraStreamService? _streamService;
 
   @override
@@ -233,16 +238,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || _perceptionSource != PerceptionSource.carlaVirtualCamera) return;
     final streamService = _streamService ?? context.read<CarlaCameraStreamService>();
     final frame = streamService.latestFrame;
-    if (frame == null) return;
+    if (frame == null || frame.isStale) {
+      context.read<RiskManager>().markVisualInputStale();
+      return;
+    }
     if (frame.sequenceNumber == _lastProcessedSequence) return;
     if (_isProcessingCarlaFrame) return;
 
+    final previousSequence = _lastProcessedSequence;
+    if (previousSequence != null && frame.sequenceNumber > previousSequence + 1) {
+      // This is intentional latest-frame coalescing, not a transport loss.
+      _carlaInferenceSkippedFrames += frame.sequenceNumber - previousSequence - 1;
+    }
     _lastProcessedSequence = frame.sequenceNumber;
     _isProcessingCarlaFrame = true;
     _runCarlaYoloInference(frame);
   }
 
   Future<void> _runCarlaYoloInference(CarlaVideoFrame frame) async {
+    final stopwatch = Stopwatch()..start();
     try {
       if (_carlaYolo == null || !_isCarlaYoloInitialized) {
         _carlaYolo = YOLO(modelPath: 'yolo26n', task: YOLOTask.detect);
@@ -263,25 +277,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             type = RoadObjectType.roadVehicle;
           }
           if (type != RoadObjectType.ignored) {
+            final box = _validNormalizedBox(yoloRes.normalizedBox);
+            if (box == null) continue;
             mapped.add(DetectedObject(
               label: yoloRes.className,
               confidence: yoloRes.confidence,
-              boundingBox: yoloRes.normalizedBox,
+              boundingBox: box,
               type: type,
             ));
           }
         }
       }
-      if (mounted && _perceptionSource == PerceptionSource.carlaVirtualCamera) {
-        context.read<RiskManager>().updateDetections(mapped);
+      stopwatch.stop();
+      final frameAge = DateTime.now().difference(frame.receivedAt);
+      if (mounted &&
+          _perceptionSource == PerceptionSource.carlaVirtualCamera &&
+          !frame.isStale) {
+        context.read<RiskManager>().updateDetections(
+          mapped,
+          // The tracker timeline is based on when this image arrived, not
+          // when inference happened to complete. This keeps a slow inference
+          // from extending the apparent freshness of old visual evidence.
+          observationTime: frame.receivedAt,
+          sourceFrame: frame.simulationFrame,
+          sequenceNumber: frame.sequenceNumber,
+          simulationTime: frame.simulationTime,
+          frameAge: frameAge,
+        );
         setState(() {
-          _carlaDetections = mapped;
+          _carlaDetections = (_streamService?.latestFrame?.sequenceNumber == frame.sequenceNumber)
+              ? mapped
+              : [];
+          _carlaDetectionSequence = frame.sequenceNumber;
+          _carlaInferenceMs = stopwatch.elapsedMilliseconds;
+          _carlaFrameAgeMs = frameAge.inMilliseconds;
         });
       }
     } catch (e) {
       debugPrint('CARLA YOLO inference error: $e');
     } finally {
       _isProcessingCarlaFrame = false;
+      // The receiver stores only its newest frame. Run that fresh frame next
+      // instead of building an inference queue of obsolete JPEGs.
+      if (mounted && _perceptionSource == PerceptionSource.carlaVirtualCamera) {
+        _onCarlaStreamFrame();
+      }
     }
   }
 
@@ -300,6 +340,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _perceptionSource = PerceptionSource.carlaVirtualCamera;
       _carlaDetections = [];
+      _carlaDetectionSequence = null;
+      _lastProcessedSequence = null;
+      _carlaInferenceSkippedFrames = 0;
     });
     // Pause physical camera on Android
     try {
@@ -332,6 +375,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _perceptionSource = PerceptionSource.phoneCamera;
       _carlaDetections = [];
+      _carlaDetectionSequence = null;
+      _lastProcessedSequence = null;
+      _carlaInferenceSkippedFrames = 0;
       _isProcessingCarlaFrame = false;
     });
     // Clear tracking history
@@ -388,10 +434,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
 
           if (type != RoadObjectType.ignored) {
+            final box = _validNormalizedBox(r.normalizedBox);
+            if (box == null) continue;
             mappedDetections.add(DetectedObject(
               label: r.className,
               confidence: r.confidence,
-              boundingBox: r.normalizedBox,
+              boundingBox: box,
               type: type,
             ));
           }
@@ -399,6 +447,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         context.read<RiskManager>().updateDetections(mappedDetections);
       },
     );
+  }
+
+  /// YOLO supplies normalised image-space rectangles. Keep the tracker input
+  /// bounded to that coordinate system and reject malformed zero-area boxes.
+  Rect? _validNormalizedBox(Rect box) {
+    final left = box.left.clamp(0.0, 1.0).toDouble();
+    final top = box.top.clamp(0.0, 1.0).toDouble();
+    final right = box.right.clamp(0.0, 1.0).toDouble();
+    final bottom = box.bottom.clamp(0.0, 1.0).toDouble();
+    if (right <= left || bottom <= top) return null;
+    return Rect.fromLTRB(left, top, right, bottom);
   }
 
   Widget _buildCarlaVirtualCameraFeed() {
@@ -418,7 +477,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 gaplessPlayback: true,
               ),
               CustomPaint(
-                painter: BoundingBoxPainter(detections: _carlaDetections),
+                painter: BoundingBoxPainter(
+                  detections: _carlaDetectionSequence == frame.sequenceNumber
+                      ? _carlaDetections
+                      : const [],
+                ),
               ),
               if (status == CarlaStreamStatus.stale)
                 Positioned(
@@ -503,6 +566,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               top: 10,
               right: 10,
               child: Container(
+                constraints: const BoxConstraints(maxWidth: 315),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.75),
@@ -531,16 +595,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      'CARLA USB: ${streamService.currentFps.toStringAsFixed(1)} FPS (${_carlaDetections.length} det)',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                    Flexible(
+                      child: Text(
+                        'CARLA USB: ${streamService.currentFps.toStringAsFixed(1)} FPS · ${_carlaInferenceMs}ms infer · ${_carlaFrameAgeMs}ms age · $_carlaInferenceSkippedFrames coalesced',
+                        maxLines: 2,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
                 ),
+              ),
+            ),
+            // Compact, optional CARLA diagnostics. These describe image-space
+            // evidence only; no physical distance or TTC is claimed here.
+            Positioned(
+              left: 10,
+              bottom: 10,
+              child: Consumer<RiskManager>(
+                builder: (context, riskManager, _) {
+                  final vector = riskManager.contextVector;
+                  final activeTrack = riskManager.currentTracks
+                      .where((track) => track.type == RoadObjectType.roadVehicle)
+                      .fold<TrackedObject?>(null, (closest, track) {
+                    if (closest == null || track.area > closest.area) return track;
+                    return closest;
+                  });
+                  final pending = riskManager.pendingReason;
+                  final remaining = riskManager.pendingConfirmationRemaining;
+                  final trend = activeTrack == null
+                      ? 'No tracked vehicle'
+                      : 'area ${activeTrack.area.toStringAsFixed(3)} · ${activeTrack.proximity.name} · '
+                          '${activeTrack.closingRate.name} · '
+                          '${activeTrack.growthPerSecond?.toStringAsFixed(2) ?? '–'}/s · '
+                          '${activeTrack.areaHistory.length} samples';
+                  final source = riskManager.lastVisualSourceFrame == null
+                      ? 'frame –'
+                      : 'frame ${riskManager.lastVisualSourceFrame} · t ${riskManager.lastVisualSimulationTime?.toStringAsFixed(2) ?? '–'}s';
+                  final candidate = !riskManager.isPendingConfirmation || pending == null
+                      ? 'Accepted: ${riskManager.currentAssessment.primaryReason}'
+                      : 'Candidate: $pending (${remaining?.inMilliseconds ?? 0}ms)';
+                  return Container(
+                    constraints: const BoxConstraints(maxWidth: 330),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Track: $trend\n$candidate\n$source · engine ${riskManager.lastRiskEvaluationDurationMs}ms · HUD: ${riskManager.currentAssessment.level.name} · ${vector.visualDataFresh ? 'fresh' : 'stale'}',
+                      style: const TextStyle(color: Colors.white, fontSize: 9.5, height: 1.25),
+                    ),
+                  );
+                },
               ),
             ),
           ],

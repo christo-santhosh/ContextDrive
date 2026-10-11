@@ -17,6 +17,26 @@ import '../services/time_context_service.dart';
 import '../services/weather_service.dart';
 import 'object_tracker.dart';
 
+/// Visual approach already requires multiple timestamped tracker measurements.
+/// Confirmation therefore varies by event instead of stacking a one-second
+/// generic debounce on top of frame history and the periodic evaluator.
+abstract final class RiskConfirmationPolicy {
+  static Duration delayFor(RiskAssessment assessment) {
+    switch (assessment.primaryReason) {
+      case 'Close closing vehicle during hard braking in adverse conditions':
+      case 'Rapid optical approach at close range':
+        return const Duration(milliseconds: 150);
+      case 'Closing vehicle in adverse conditions':
+      case 'Tracked vehicle closing in':
+        return const Duration(milliseconds: 250);
+      case 'Tracked vehicle is closing in':
+        return const Duration(milliseconds: 350);
+      default:
+        return const Duration(milliseconds: 500);
+    }
+  }
+}
+
 class RiskManager extends ChangeNotifier {
   RiskManager(this._gpsService, this._weatherService, this._timeContextService, this._carlaDemoService) {
     _wasCarlaRunning = _carlaDemoService.isRunning;
@@ -92,6 +112,20 @@ class RiskManager extends ChangeNotifier {
     notifyListeners();
   }
   List<TrackedObject> _currentTracks = [];
+  DateTime? _lastVisualObservationAt;
+  int? _lastVisualSourceFrame;
+  int? _lastVisualSequence;
+  double? _lastVisualSimulationTime;
+  Duration? _lastVisualFrameAge;
+  DateTime? _lastRiskEvaluationAt;
+  int _lastRiskEvaluationDurationMs = 0;
+  Duration? get lastVisualFrameAge => _lastVisualFrameAge;
+  int? get lastVisualSourceFrame => _lastVisualSourceFrame;
+  int? get lastVisualSequence => _lastVisualSequence;
+  double? get lastVisualSimulationTime => _lastVisualSimulationTime;
+  DateTime? get lastRiskEvaluationAt => _lastRiskEvaluationAt;
+  int get lastRiskEvaluationDurationMs => _lastRiskEvaluationDurationMs;
+  List<TrackedObject> get currentTracks => List.unmodifiable(_currentTracks);
   StreamSubscription<Position>? _positionSubscription;
   Timer? _evaluationTimer;
   bool _isStarted = false;
@@ -106,6 +140,30 @@ class RiskManager extends ChangeNotifier {
   DateTime? _pendingSince;
   DateTime? _cooldownUntil;
 
+  /// Diagnostic-only state. This is intentionally separate from the displayed
+  /// assessment: a candidate is not shown as an accepted warning until its
+  /// event-specific confirmation interval has completed.
+  RiskLevel? get pendingLevel => _pendingLevel;
+  String? get pendingReason => _pendingReason;
+  bool get isPendingConfirmation =>
+      _pendingLevel != null &&
+      _pendingReason != null &&
+      (_currentAssessment.level != _pendingLevel ||
+          _currentAssessment.primaryReason != _pendingReason);
+  Duration? get pendingConfirmationRemaining {
+    if (!isPendingConfirmation || _pendingSince == null) return null;
+    final candidate = RiskAssessment(
+      level: _pendingLevel!,
+      dataQualityStatus: AssessmentDataQuality.limited,
+      whatHappened: '',
+      whyExplanation: '',
+      recommendation: '',
+      primaryReason: _pendingReason!,
+    );
+    final remaining = RiskConfirmationPolicy.delayFor(candidate) - DateTime.now().difference(_pendingSince!);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
   void _onCarlaServiceChanged() {
     if (_wasCarlaRunning == _carlaDemoService.isRunning) return;
     _wasCarlaRunning = _carlaDemoService.isRunning;
@@ -117,6 +175,11 @@ class RiskManager extends ChangeNotifier {
     _resetMotion();
     _tracker.reset();
     _currentTracks = [];
+    _lastVisualObservationAt = null;
+    _lastVisualSourceFrame = null;
+    _lastVisualSequence = null;
+    _lastVisualSimulationTime = null;
+    _lastVisualFrameAge = null;
     _riskAlertService.clearActiveAlert();
     notifyListeners();
   }
@@ -182,13 +245,47 @@ class RiskManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateDetections(List<DetectedObject> detections) {
-    _currentTracks = _tracker.updateTracks(detections);
+  void updateDetections(
+    List<DetectedObject> detections, {
+    DateTime? observationTime,
+    int? sourceFrame,
+    int? sequenceNumber,
+    double? simulationTime,
+    Duration? frameAge,
+  }) {
+    final now = observationTime ?? DateTime.now();
+    _currentTracks = _tracker.updateTracks(detections, observationTime: now);
+    _lastVisualObservationAt = now;
+    _lastVisualSourceFrame = sourceFrame;
+    _lastVisualSequence = sequenceNumber;
+    _lastVisualSimulationTime = simulationTime;
+    _lastVisualFrameAge = frameAge;
+    // Do not wait for the 500 ms periodic tick after a fresh YOLO result.
+    _evaluateRisk();
+    notifyListeners();
+  }
+
+  void markVisualInputStale() {
+    if (_lastVisualObservationAt == null && _currentTracks.isEmpty) return;
+    _lastVisualObservationAt = null;
+    _lastVisualSourceFrame = null;
+    _lastVisualSequence = null;
+    _lastVisualFrameAge = null;
+    _lastVisualSimulationTime = null;
+    _tracker.reset();
+    _currentTracks = [];
+    _evaluateRisk();
+    notifyListeners();
   }
 
   void resetTracking() {
     _tracker.reset();
     _currentTracks = [];
+    _lastVisualObservationAt = null;
+    _lastVisualSourceFrame = null;
+    _lastVisualSequence = null;
+    _lastVisualFrameAge = null;
+    _lastVisualSimulationTime = null;
     notifyListeners();
   }
 
@@ -211,6 +308,11 @@ class RiskManager extends ChangeNotifier {
 
   void _evaluateRisk() {
     final now = DateTime.now();
+    _lastRiskEvaluationAt = now;
+    _tracker.expireStale(now);
+    _currentTracks = _currentTracks
+        .where((track) => now.difference(track.lastSeen) <= ObjectTracker.maxTrackAge)
+        .toList();
     if (_carlaDemoService.isRunning && !_carlaDemoService.isCarlaActive) {
       _setStaleCarlaAssessment();
       return;
@@ -226,12 +328,17 @@ class RiskManager extends ChangeNotifier {
         ? _carlaContext(now, trackState)
         : _physicalContext(now, trackState);
     _lastContextVector = context;
-    _applyAssessment(_riskEngine.assessRisk(context), now);
+    final engineTimer = Stopwatch()..start();
+    final assessment = _riskEngine.assessRisk(context);
+    engineTimer.stop();
+    _lastRiskEvaluationDurationMs = engineTimer.elapsedMicroseconds ~/ 1000;
+    _applyAssessment(assessment, now);
   }
 
-  ({int vehicles, double closest, bool closing}) _trackState() {
+  ({int vehicles, double closest, bool closing, bool developing, double? area, double? growth, bool fresh}) _trackState() {
     var closest = 1.0;
     TrackedObject? closestTrack;
+    TrackedObject? developingTrack;
     var vehicles = 0;
     for (final track in _currentTracks) {
       if (track.type != RoadObjectType.roadVehicle) continue;
@@ -241,11 +348,26 @@ class RiskManager extends ChangeNotifier {
         closest = visualProxy;
         closestTrack = track;
       }
+      if (track.isDevelopingApproach &&
+          (developingTrack == null || track.area > developingTrack.area)) {
+        developingTrack = track;
+      }
     }
-    return (vehicles: vehicles, closest: closest, closing: closestTrack?.closingRate == ClosingRate.closing);
+    final visualFresh = _lastVisualObservationAt != null &&
+        DateTime.now().difference(_lastVisualObservationAt!) <= ObjectTracker.maxTrackAge;
+    final trendTrack = developingTrack ?? closestTrack;
+    return (
+      vehicles: vehicles,
+      closest: closest,
+      closing: closestTrack?.closingRate == ClosingRate.closing,
+      developing: developingTrack != null,
+      area: trendTrack?.area,
+      growth: trendTrack?.growthPerSecond,
+      fresh: visualFresh,
+    );
   }
 
-  ContextVector _physicalContext(DateTime now, ({int vehicles, double closest, bool closing}) tracks) {
+  ContextVector _physicalContext(DateTime now, ({int vehicles, double closest, bool closing, bool developing, double? area, double? growth, bool fresh}) tracks) {
     final staleSpeed = _lastSpeedTimestamp == null || now.difference(_lastSpeedTimestamp!).inSeconds > 5;
     final speed = overrideSpeed ?? ((_invalidSpeedReadings >= 3 || staleSpeed) ? null : _currentSpeed);
     final time = overrideIsNight == null
@@ -267,6 +389,10 @@ class RiskManager extends ChangeNotifier {
       nearbyVehicles: tracks.vehicles,
       closestVehicleDistance: tracks.closest,
       isClosingIn: tracks.closing,
+      isVisualApproachDeveloping: tracks.developing,
+      closestVehicleArea: tracks.area,
+      visualGrowthPerSecond: tracks.growth,
+      visualDataFresh: tracks.fresh,
       motion: motion,
       telemetryFresh: true,
       speedQualityReason: speed == null ? (_latestSpeedReading?.rejectionReason ?? (staleSpeed ? 'Stale GNSS timestamp' : 'Speed unavailable')) : null,
@@ -275,7 +401,7 @@ class RiskManager extends ChangeNotifier {
     );
   }
 
-  ContextVector _carlaContext(DateTime now, ({int vehicles, double closest, bool closing}) tracks) {
+  ContextVector _carlaContext(DateTime now, ({int vehicles, double closest, bool closing, bool developing, double? area, double? growth, bool fresh}) tracks) {
     final telemetry = _carlaDemoService.latestTelemetry!;
     final weather = overrideIsRaining == null
         ? (telemetry.isRaining == null
@@ -302,6 +428,10 @@ class RiskManager extends ChangeNotifier {
       nearbyVehicles: tracks.vehicles,
       closestVehicleDistance: tracks.closest,
       isClosingIn: tracks.closing,
+      isVisualApproachDeveloping: tracks.developing,
+      closestVehicleArea: tracks.area,
+      visualGrowthPerSecond: tracks.growth,
+      visualDataFresh: tracks.fresh,
       motion: motion,
       longitudinalAcceleration: telemetry.longitudinalAcceleration,
       telemetryFresh: !telemetry.isStale,
@@ -361,7 +491,8 @@ class RiskManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (_pendingSince != null && now.difference(_pendingSince!).inMilliseconds >= 1000) {
+    if (_pendingSince != null &&
+        now.difference(_pendingSince!) >= RiskConfirmationPolicy.delayFor(next)) {
       final changed = _currentAssessment.level != next.level || _currentAssessment.primaryReason != next.primaryReason;
       _currentAssessment = next.copyWith(raisedAt: changed ? now : _currentAssessment.raisedAt, previousLevel: changed ? _currentAssessment.level : _currentAssessment.previousLevel);
       _cooldownUntil = now.add(const Duration(seconds: 3));
@@ -379,6 +510,7 @@ class RiskManager extends ChangeNotifier {
       daylightCondition: DaylightCondition.unknown, visibilityMeters: null, isWeatherAvailable: false,
       nearbyVehicles: 0, closestVehicleDistance: 1, isClosingIn: false,
       motion: MotionClassification.unknown, telemetryFresh: false,
+      visualDataFresh: false,
       speedQualityReason: 'CARLA telemetry unavailable',
     );
     _currentAssessment = const RiskAssessment(

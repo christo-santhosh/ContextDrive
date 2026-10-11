@@ -21,6 +21,7 @@ class RiskEngine {
     final hasSpeed = context.currentSpeed != null;
 
     if (!context.telemetryFresh) quality.add('Telemetry is stale or disconnected');
+    if (!context.visualDataFresh) quality.add('Camera perception stale or unavailable');
     if (hasSpeed) {
       quality.add('Speed current');
       modifiers.add('Speed ${context.currentSpeed!.toStringAsFixed(0)} km/h');
@@ -113,6 +114,25 @@ class RiskEngine {
         evidence: ['Signed longitudinal acceleration ${context.longitudinalAcceleration?.toStringAsFixed(1) ?? 'available'} m/s²', if (speeding) 'Speed exceeds configured limit by more than 10 km/h', if (poorVisibility) 'Poor visibility context active'],
       ));
     }
+    // This is deliberately separate from the near/very-near rules. It uses a
+    // bounded trend of fresh, normalised image measurements to give an early
+    // caution before the lead vehicle fills a large part of the frame.
+    if (context.isVisualApproachDeveloping) {
+      candidates.add(_Candidate(
+        severity: RiskLevel.moderate,
+        name: 'Tracked vehicle is closing in',
+        what: 'A tracked vehicle is closing in.',
+        why: 'The visible space to the vehicle ahead is reducing.',
+        action: 'Monitor the road ahead and increase following distance.',
+        evidence: [
+          'Consistent bounding-box growth across fresh frames',
+          if (context.closestVehicleArea != null)
+            'Visual area ${context.closestVehicleArea!.toStringAsFixed(3)}',
+          if (context.visualGrowthPerSecond != null)
+            'Growth ${context.visualGrowthPerSecond!.toStringAsFixed(2)} per second',
+        ],
+      ));
+    }
     if (near && context.isClosingIn) {
       candidates.add(_Candidate(
         severity: adverse ? RiskLevel.high : RiskLevel.moderate,
@@ -158,6 +178,7 @@ class RiskEngine {
     final dataStatus = !context.telemetryFresh
         ? AssessmentDataQuality.stale
         : (!hasSpeed ||
+                !context.visualDataFresh ||
                 !context.isWeatherAvailable ||
                 context.visibilityAssessment == VisibilityAssessment.unknown ||
                 context.daylightCondition == DaylightCondition.unknown)

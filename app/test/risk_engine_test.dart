@@ -12,6 +12,10 @@ ContextVector context({
   int vehicles = 0,
   double closest = 1,
   bool closing = false,
+  bool developing = false,
+  double? visualArea,
+  double? visualGrowth,
+  bool visualFresh = true,
   MotionClassification motion = MotionClassification.normal,
   double? longitudinalAcceleration,
   bool fresh = true,
@@ -25,6 +29,10 @@ ContextVector context({
   nearbyVehicles: vehicles,
   closestVehicleDistance: closest,
   isClosingIn: closing,
+  isVisualApproachDeveloping: developing,
+  closestVehicleArea: visualArea,
+  visualGrowthPerSecond: visualGrowth,
+  visualDataFresh: visualFresh,
   motion: motion,
   longitudinalAcceleration: longitudinalAcceleration,
   telemetryFresh: fresh,
@@ -61,6 +69,22 @@ void main() {
       expect(assessment.level, RiskLevel.high);
       expect(assessment.primaryReason, 'Rapid optical approach at close range');
       expect(assessment.advisories.single, contains('Rain is reported'));
+    });
+
+    test('a fresh developing visual approach warns before the near proxy', () {
+      final assessment = engine.assessRisk(context(
+        vehicles: 1,
+        // Medium is 0.6 and near is 0.3: this verifies the early rule does
+        // not inherit the later near/very-near thresholds.
+        closest: 0.6,
+        developing: true,
+        visualArea: 0.030,
+        visualGrowth: 0.42,
+      ));
+      expect(assessment.level, RiskLevel.moderate);
+      expect(assessment.primaryReason, 'Tracked vehicle is closing in');
+      expect(assessment.whatHappened, 'A tracked vehicle is closing in.');
+      expect(assessment.evidenceReasons, contains('Consistent bounding-box growth across fresh frames'));
     });
 
     test('critical requires close, closing, braking and adverse context', () {
@@ -114,6 +138,13 @@ void main() {
       final assessment = engine.assessRisk(context(fresh: false, motion: MotionClassification.hardBraking, longitudinalAcceleration: -4));
       expect(assessment.level, RiskLevel.moderate);
       expect(assessment.dataQualityStatus, AssessmentDataQuality.stale);
+    });
+
+    test('stale visual input is reported as limited rather than inferred as clear', () {
+      final assessment = engine.assessRisk(context(visualFresh: false));
+      expect(assessment.level, RiskLevel.low);
+      expect(assessment.dataQualityStatus, AssessmentDataQuality.limited);
+      expect(assessment.dataQuality, contains('Camera perception stale or unavailable'));
     });
   });
 }

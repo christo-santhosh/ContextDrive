@@ -139,6 +139,16 @@ void main() {
       expect(service.latestFrame!.sequenceNumber, 1);
     });
 
+    test('retains the newest received frame rather than exposing a frame queue', () {
+      service.parseBytes(createFramePacket(runId: 'latest-only', seq: 1, simFrame: 101));
+      service.parseBytes(createFramePacket(runId: 'latest-only', seq: 2, simFrame: 102));
+      service.parseBytes(createFramePacket(runId: 'latest-only', seq: 3, simFrame: 103));
+
+      expect(service.framesReceived, 3);
+      expect(service.latestFrame!.sequenceNumber, 3);
+      expect(service.latestFrame!.simulationFrame, 103);
+    });
+
     test('Resynchronizes after junk or corrupted leading bytes', () {
       final junk = Uint8List.fromList([0x00, 0x12, 0x45, 0x99, 0xFF]);
       final valid = createFramePacket(seq: 1);
