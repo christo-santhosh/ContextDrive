@@ -101,7 +101,7 @@ abstract final class RiskThresholds {
   static const double veryNearVisualProxy = 0.10;
   static const double nearVisualProxy = 0.30;
   static const int poorVisibilityMeters = 1000;
-  static const double speedLimitModerateExcessKmh = 10;
+  static const double speedLimitModerateExcessKmh = 0;
   static const double speedLimitHighExcessKmh = 20;
   static const double highSpeedPoorVisibilityKmh = 80;
   static const double minimumMotionSpeedKmh = 5;

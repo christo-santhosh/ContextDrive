@@ -737,7 +737,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Consumer<RiskManager>(
       builder: (context, riskManager, child) {
         final speed = riskManager.contextVector.currentSpeed;
-        final speedLimit = riskManager.contextVector.currentSpeedLimit;
         final ctx = riskManager.contextVector;
         final liveWeather = riskManager.liveWeather;
 
@@ -829,29 +828,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   letterSpacing: 1,
                 ),
               ),
-              if (speedLimit != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(color: Colors.redAccent, width: 2.5),
-                  ),
-                  child: Center(
-                    child: Text(
-                      "$speedLimit",
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
               Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,

@@ -28,7 +28,7 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
     _isRaining = riskManager.overrideIsRaining;
     _isNight = riskManager.overrideIsNight;
     _isErratic = riskManager.overrideIsErratic;
-    _speedLimit = riskManager.overrideSpeedLimit;
+    _speedLimit = riskManager.overrideSpeedLimit ?? riskManager.configuredSpeedLimit;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && riskManager.liveWeather == null) {
@@ -44,6 +44,10 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
     riskManager.overrideIsNight = _isNight;
     riskManager.overrideIsErratic = _isErratic;
     riskManager.overrideSpeedLimit = _speedLimit;
+    if (_speedLimit != null) {
+      riskManager.configuredSpeedLimit = _speedLimit!;
+    }
+    riskManager.forceReevaluate();
     Navigator.pop(context);
   }
 
@@ -53,7 +57,7 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
       _isRaining = null;
       _isNight = null;
       _isErratic = null;
-      _speedLimit = null;
+      _speedLimit = 60;
     });
   }
 
@@ -124,24 +128,102 @@ class _DebugSettingsSheetState extends State<DebugSettingsSheet> {
             
             const SizedBox(height: 16),
             
-            // Speed Limit Override
-            const Text('Speed Limit Override (km/h)', style: TextStyle(color: Colors.white70)),
+            // Configured Road Speed Limit Section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Configured Speed Limit',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Manual road speed limit setting',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                  ],
+                ),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.redAccent, width: 2.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.redAccent,
+                        blurRadius: 6,
+                        spreadRadius: -2,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${_speedLimit ?? 60}',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Alert will trigger when vehicle speed exceeds ${_speedLimit ?? 60} km/h.',
+              style: const TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 10),
+            // Quick preset chips
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [30, 40, 50, 60, 80, 100].map((preset) {
+                final isSelected = (_speedLimit ?? 60) == preset;
+                return ChoiceChip(
+                  label: Text('$preset km/h'),
+                  selected: isSelected,
+                  selectedColor: Colors.orangeAccent,
+                  backgroundColor: const Color(0xFF242428),
+                  labelStyle: TextStyle(
+                    color: isSelected ? Colors.black : Colors.white70,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 12,
+                  ),
+                  onSelected: (_) {
+                    setState(() {
+                      _speedLimit = preset;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 8),
+            // Fine-tune Slider
             Slider(
-              value: (_speedLimit ?? 0).toDouble(),
-              min: 0,
-              max: 120,
+              value: ((_speedLimit ?? 60).clamp(20, 140)).toDouble(),
+              min: 20,
+              max: 140,
               divisions: 24,
-              label: _speedLimit?.toString() ?? 'Off',
-              activeColor: _speedLimit != null ? Colors.orangeAccent : Colors.grey,
+              label: '${_speedLimit ?? 60} km/h',
+              activeColor: Colors.orangeAccent,
+              inactiveColor: Colors.white24,
               onChanged: (value) {
                 setState(() {
                   _speedLimit = value.toInt();
-                  if (_speedLimit == 0) _speedLimit = null;
                 });
               },
             ),
-            if (_speedLimit == null)
-              const Text('Speed limit from OSM / CARLA', style: TextStyle(color: Colors.grey, fontSize: 12)),
 
             const SizedBox(height: 16),
             

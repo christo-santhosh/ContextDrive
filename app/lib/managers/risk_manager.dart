@@ -90,6 +90,18 @@ class RiskManager extends ChangeNotifier {
   bool? overrideIsNight;
   bool? overrideIsErratic;
   int? overrideSpeedLimit;
+  int _configuredSpeedLimit = 60;
+  int get configuredSpeedLimit => overrideSpeedLimit ?? _configuredSpeedLimit;
+  set configuredSpeedLimit(int value) {
+    _configuredSpeedLimit = value;
+    overrideSpeedLimit = value;
+    forceReevaluate();
+  }
+
+  void forceReevaluate() {
+    _evaluateRisk();
+    notifyListeners();
+  }
 
   double? _currentSpeed;
   DateTime? _lastSpeedTimestamp;
@@ -381,7 +393,7 @@ class RiskManager extends ChangeNotifier {
     final motion = overrideIsErratic == true ? MotionClassification.hardBraking : MotionClassification.unknown;
     return ContextVector(
       currentSpeed: speed,
-      currentSpeedLimit: overrideSpeedLimit ?? _speedLimitService.currentSpeedLimit,
+      currentSpeedLimit: overrideSpeedLimit ?? _configuredSpeedLimit,
       weatherCategory: weather,
       daylightCondition: time,
       visibilityMeters: _weather?.visibilityMeters,
@@ -419,7 +431,7 @@ class RiskManager extends ChangeNotifier {
     final motion = _persistMotion(rawMotion, now);
     return ContextVector(
       currentSpeed: overrideSpeed ?? telemetry.speedKmh,
-      currentSpeedLimit: overrideSpeedLimit ?? telemetry.speedLimit,
+      currentSpeedLimit: overrideSpeedLimit ?? telemetry.speedLimit ?? _configuredSpeedLimit,
       weatherCategory: weather,
       daylightCondition: day,
       visibilityMeters: _carlaVisibilityMetres(telemetry.visibilityCategory),

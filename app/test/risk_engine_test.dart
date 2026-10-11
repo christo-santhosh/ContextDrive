@@ -108,8 +108,8 @@ void main() {
     });
 
     test('speed threshold equality does not trigger speeding', () {
-      expect(engine.assessRisk(context(speed: 70, limit: 60)).level, RiskLevel.low);
-      expect(engine.assessRisk(context(speed: 70.1, limit: 60)).primaryReason, 'Speed limit exceeded');
+      expect(engine.assessRisk(context(speed: 60, limit: 60)).level, RiskLevel.low);
+      expect(engine.assessRisk(context(speed: 60.1, limit: 60)).primaryReason, 'Speed limit exceeded');
     });
   });
 
