@@ -81,11 +81,7 @@ class RiskAlertService {
   }
 
   String _voiceMessage(RiskAssessment assessment) {
-    final prefix = assessment.level == RiskLevel.critical
-        ? 'Critical warning.'
-        : assessment.level == RiskLevel.high
-            ? 'High risk.'
-            : 'Caution.';
-    return '$prefix ${assessment.howExplanation} ${assessment.recommendation}';
+    final advice = assessment.recommendation.trim();
+    return advice.isNotEmpty ? advice : assessment.howExplanation.trim();
   }
 }

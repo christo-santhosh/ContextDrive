@@ -33,4 +33,35 @@ void main() {
 
     expect(calls, ['speak', 'speak']);
   });
+
+  test('voice speaks only the advice recommendation and not the whole alert', () async {
+    final spokenMessages = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('contextdrive/voice_alerts'),
+      (call) async {
+        if (call.method == 'speak') {
+          final args = call.arguments as Map<dynamic, dynamic>?;
+          spokenMessages.add(args?['message'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('contextdrive/voice_alerts'), null));
+
+    final service = RiskAlertService();
+    await service.announce(
+      const RiskAssessment(
+        level: RiskLevel.critical,
+        dataQualityStatus: AssessmentDataQuality.good,
+        whatHappened: 'Strong deceleration was detected while a tracked vehicle was closing in.',
+        whyExplanation: 'The forward visual buffer is reducing while braking.',
+        recommendation: 'Brake smoothly and increase following distance.',
+        primaryReason: 'Close closing vehicle during hard braking',
+      ),
+      enabled: true,
+    );
+
+    expect(spokenMessages, ['Brake smoothly and increase following distance.']);
+  });
 }
